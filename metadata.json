@@ -1,0 +1,6 @@
+{
+  "name": "Starryz5",
+  "description": "Starryz5 permite a alumnos registrar institutos y votar democráticamente por estudiantes y profesores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

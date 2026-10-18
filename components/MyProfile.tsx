@@ -1,0 +1,3009 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/src/lib/supabase';
+import { useAuth } from '@/src/context/AuthContext';
+import { checkUsernameAvailable, updateAuthUserProfile } from '@/src/lib/auth';
+import { motion } from 'motion/react';
+import { 
+  User, 
+  Mail, 
+  Calendar, 
+  ShieldCheck, 
+  Save, 
+  CheckCircle2, 
+  AlertCircle, 
+  Loader2, 
+  Database,
+  ArrowLeft,
+  Sparkles,
+  Bookmark,
+  Trash2,
+  Folder,
+  Plus,
+  ChevronRight,
+  Heart,
+  HeartCrack,
+  Star,
+  UserCheck,
+  Bell,
+  BellRing,
+  BellOff,
+  GraduationCap,
+  Users,
+  Settings2,
+  BarChart3,
+  TrendingUp,
+  Activity,
+  Globe,
+  Camera,
+  Eye,
+  Maximize2,
+  X,
+  CreditCard,
+  Lock
+} from 'lucide-react';
+import { 
+  getUserInteractions, 
+  removeUserInteraction, 
+  UserInteractionItem,
+  getUserProfessorSubscriptions,
+  removeProfessorNotificationSubscription,
+  UserProfessorSubscriptionItem
+} from '@/src/lib/professors';
+import { 
+  getUserStudentSubscriptions, 
+  removeStudentNotificationSubscription, 
+  UserStudentSubscriptionItem,
+  Student,
+  getStudentById,
+  getStudentInteractionCounts,
+  getStudentRatingBreakdown,
+  getStudentLoveMessages,
+  StudentLoveMessage
+} from '@/src/lib/students';
+import { getUserActitudCounts, getUserActitudVotes, toggleUserActitudVote } from '@/src/lib/userActitud';
+import { getUserCrushesCount, hasUserCrushed, toggleUserCrush } from '@/src/lib/userCrushes';
+import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
+import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
+import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
+import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
+import AvatarUploadModal from '@/components/Modals/AvatarUploadModal';
+import GenderBadge from '@/components/GenderBadge';
+
+interface SupabaseUser {
+  id: string;
+  firebase_uid?: string;
+  email: string | null;
+  display_name: string | null;
+  nombres?: string | null;
+  apellido_paterno?: string | null;
+  apellido_materno?: string | null;
+  username?: string | null;
+  gender?: string | null;
+  role?: string | null;
+  photo_url: string | null;
+  created_at: string;
+  is_anonymous: boolean;
+  linked_google_at: string | null;
+}
+
+function parseFullName(fullName: string): { nombres: string; apellidoPaterno: string; apellidoMaterno: string } {
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { nombres: '', apellidoPaterno: '', apellidoMaterno: '' };
+  }
+  if (parts.length === 1) {
+    return { nombres: parts[0], apellidoPaterno: '', apellidoMaterno: '' };
+  }
+  if (parts.length === 2) {
+    return { nombres: parts[0], apellidoPaterno: parts[1], apellidoMaterno: '' };
+  }
+  if (parts.length === 3) {
+    return { nombres: parts[0], apellidoPaterno: parts[1], apellidoMaterno: parts[2] };
+  }
+  const apellidoMaterno = parts[parts.length - 1];
+  const apellidoPaterno = parts[parts.length - 2];
+  const nombres = parts.slice(0, parts.length - 2).join(' ');
+  return { nombres, apellidoPaterno, apellidoMaterno };
+}
+
+interface MyProfileProps {
+  uid?: string;
+  onBackToHome: () => void;
+  onNavigate?: (path: string) => void;
+}
+
+export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfileProps) {
+  const { user, linkWithGoogle } = useAuth();
+  const [dbUser, setDbUser] = useState<SupabaseUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
+  
+  // 3 campos oficiales: Nombres, Apellido Paterno, Apellido Materno
+  const [nombresInput, setNombresInput] = useState('');
+  const [apellidoPaternoInput, setApellidoPaternoInput] = useState('');
+  const [apellidoMaternoInput, setApellidoMaternoInput] = useState('');
+  const [displayNameInput, setDisplayNameInput] = useState('');
+  const [initialDisplayName, setInitialDisplayName] = useState('');
+  const [dniInput, setDniInput] = useState('');
+  const [isDniVerified, setIsDniVerified] = useState(false);
+  const [selectedGender, setSelectedGender] = useState<'male' | 'female' | ''>('');
+  const [initialGender, setInitialGender] = useState<'male' | 'female' | ''>('');
+  const [usernameAvailability, setUsernameAvailability] = useState<{
+    status: 'idle' | 'checking' | 'available' | 'taken' | 'error';
+    message: string;
+  }>({ status: 'idle', message: '' });
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [profileTab, setProfileTab] = useState<'info' | 'collections' | 'interactions' | 'subscriptions' | 'admin'>('info');
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [isViewPhotoModalOpen, setIsViewPhotoModalOpen] = useState(false);
+
+  // Estados para el perfil transformado tras reclamar perfil con DNI
+  const [claimedStudent, setClaimedStudent] = useState<Student | null>(null);
+  const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'reseñas' | 'crushes' | 'estadisticas'>('mis_datos');
+  const [claimedRatingBreakdown, setClaimedRatingBreakdown] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+  const [claimedLoveMessages, setClaimedLoveMessages] = useState<StudentLoveMessage[]>([]);
+  const [loadingStudentData, setLoadingStudentData] = useState(false);
+
+  // Admin Dashboard Metrics State
+  const [adminMetrics, setAdminMetrics] = useState<AdminDashboardData | null>(null);
+  const [loadingAdminMetrics, setLoadingAdminMetrics] = useState(false);
+
+  // Colecciones State
+  const [collections, setCollections] = useState<any[]>([]);
+  const [collectionItems, setCollectionItems] = useState<any[]>([]);
+  const [selectedColId, setSelectedColId] = useState<string | null>(null);
+  const [loadingCollections, setLoadingCollections] = useState(false);
+  const [newColInputName, setNewColInputName] = useState('');
+  const [creatingColProfile, setCreatingColProfile] = useState(false);
+  const [collectionsError, setCollectionsError] = useState('');
+
+  // Interacciones State
+  const [interactions, setInteractions] = useState<UserInteractionItem[]>([]);
+  const [loadingInteractions, setLoadingInteractions] = useState(false);
+  const [interactionFilter, setInteractionFilter] = useState<'crush' | 'fan' | 'knows'>('crush');
+  const [interactionsError, setInteractionsError] = useState('');
+
+  // Suscripciones a Notificaciones State
+  const [subscriptionsSubTab, setSubscriptionsSubTab] = useState<'professors' | 'students'>('professors');
+  const [profSubscriptions, setProfSubscriptions] = useState<UserProfessorSubscriptionItem[]>([]);
+  const [studentSubscriptions, setStudentSubscriptions] = useState<UserStudentSubscriptionItem[]>([]);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+  const [subscriptionsError, setSubscriptionsError] = useState('');
+  const [editingProfSub, setEditingProfSub] = useState<UserProfessorSubscriptionItem | null>(null);
+  const [editingStudentSub, setEditingStudentSub] = useState<UserStudentSubscriptionItem | null>(null);
+
+  const isOwnProfile = !uid || (user && user.uid === uid);
+
+  // Votos de 'users_actitud' (Yo te conozco / Fans - Exclusivo 1 voto)
+  const [knowCount, setKnowCount] = useState(0);
+  const [fanCount, setFanCount] = useState(0);
+  const [currentVote, setCurrentVote] = useState<'yo_te_conozco' | 'fans' | null>(null);
+
+  const isSelfProfile = isOwnProfile || (uid && user && uid === user.uid);
+
+  useEffect(() => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid && !dbUser?.id) return;
+
+    async function loadActitud() {
+      try {
+        const candidateIds = [targetUid, dbUser?.id, (dbUser as any)?.claimed_student_id].filter(Boolean) as string[];
+        const counts = await getUserActitudCounts(candidateIds[0], candidateIds);
+        const realKnows = Math.max(counts.knowCount, (dbUser as any)?.knows_count || 0);
+        const realFans = Math.max(counts.fanCount, (dbUser as any)?.fans_count || 0);
+        setKnowCount(realKnows);
+        setFanCount(realFans);
+
+        if (user?.uid && targetUid !== user.uid) {
+          const votes = await getUserActitudVotes(candidateIds[0], user.uid, candidateIds);
+          setCurrentVote(votes.currentVote);
+        } else {
+          setCurrentVote(null);
+        }
+      } catch (err) {
+        console.warn('Error al cargar actitud:', err);
+      }
+    }
+
+    loadActitud();
+  }, [uid, user?.uid, dbUser?.id, (dbUser as any)?.fans_count, (dbUser as any)?.knows_count]);
+
+  // Votos de 'users_crushes'
+  const [crushesCount, setCrushesCount] = useState(0);
+  const [hasCrushedUser, setHasCrushedUser] = useState(false);
+
+  useEffect(() => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid && !dbUser?.id) return;
+
+    async function loadCrushes() {
+      try {
+        const candidateIds = [targetUid, dbUser?.id, (dbUser as any)?.claimed_student_id].filter(Boolean) as string[];
+        const count = await getUserCrushesCount(candidateIds[0], candidateIds);
+        const realCrushes = Math.max(count, (dbUser as any)?.crushes_count || 0);
+        setCrushesCount(realCrushes);
+
+        if (user?.uid && targetUid !== user.uid) {
+          const isCrushed = await hasUserCrushed(candidateIds[0], user.uid, candidateIds);
+          setHasCrushedUser(isCrushed);
+        } else {
+          setHasCrushedUser(false);
+        }
+      } catch (err) {
+        console.warn('Error al cargar crushes:', err);
+      }
+    }
+
+    loadCrushes();
+  }, [uid, user?.uid, dbUser?.id, (dbUser as any)?.crushes_count]);
+
+  const handleToggleCrush = async () => {
+    const targetUid = uid || user?.uid;
+    if (!user?.uid || !targetUid || targetUid === user.uid) return;
+
+    const nextState = !hasCrushedUser;
+    setHasCrushedUser(nextState);
+    setCrushesCount(prev => nextState ? prev + 1 : Math.max(0, prev - 1));
+
+    try {
+      const res = await toggleUserCrush(targetUid, user.uid);
+      setHasCrushedUser(res.hasCrushed);
+      setCrushesCount(res.newCount);
+    } catch (err) {
+      console.error('Error al votar crush:', err);
+    }
+  };
+
+  const handleToggleActitud = async (type: 'yo_te_conozco' | 'fans') => {
+    const targetUid = uid || user?.uid;
+    
+    // BLOQUEO DE AUTOVOTO: No se permite votar en tu propio perfil
+    if (!user?.uid || !targetUid || targetUid === user.uid) {
+      return;
+    }
+
+    // Cálculo optimista
+    let nextVote: 'yo_te_conozco' | 'fans' | null = null;
+    if (currentVote === type) {
+      // Quitar voto
+      nextVote = null;
+      if (type === 'yo_te_conozco') setKnowCount(prev => Math.max(0, prev - 1));
+      else setFanCount(prev => Math.max(0, prev - 1));
+    } else if (currentVote) {
+      // Cambiar voto (Ej: de 'fans' a 'yo_te_conozco')
+      nextVote = type;
+      if (type === 'yo_te_conozco') {
+        setKnowCount(prev => prev + 1);
+        setFanCount(prev => Math.max(0, prev - 1));
+      } else {
+        setFanCount(prev => prev + 1);
+        setKnowCount(prev => Math.max(0, prev - 1));
+      }
+    } else {
+      // Nuevo voto
+      nextVote = type;
+      if (type === 'yo_te_conozco') setKnowCount(prev => prev + 1);
+      else setFanCount(prev => prev + 1);
+    }
+
+    setCurrentVote(nextVote);
+
+    try {
+      const res = await toggleUserActitudVote(targetUid, user.uid, type);
+      setCurrentVote(res.activeVote);
+      setKnowCount(res.newCounts.knowCount);
+      setFanCount(res.newCounts.fanCount);
+    } catch (err) {
+      console.error('Error al votar actitud:', err);
+    }
+  };
+
+  const handleLinkWithGoogleClick = async () => {
+    if (!user) return;
+    setLinkingGoogle(true);
+    setSuccessMsg(null);
+    setErrorMsg(null);
+    try {
+      await linkWithGoogle();
+      
+      // Consultar de nuevo los datos de Supabase para obtener el registro actualizado
+      let fetchQuery = supabase.from('users').select('*');
+      if (user.email) {
+        fetchQuery = fetchQuery.eq('email', user.email);
+      } else {
+        fetchQuery = fetchQuery.eq('id', user.uid);
+      }
+      const { data, error } = await fetchQuery.maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setDbUser(data as SupabaseUser);
+        const name = data.display_name || data.username || '';
+        const parsed = parseFullName(name);
+        setNombresInput(parsed.nombres);
+        setApellidoPaternoInput(parsed.apellidoPaterno);
+        setApellidoMaternoInput(parsed.apellidoMaterno);
+        setDisplayNameInput(name);
+        setInitialDisplayName(name);
+        
+        let loadedGender: 'male' | 'female' | '' = '';
+        if (data.gender === 'male' || data.gender === 'hombre') loadedGender = 'male';
+        else if (data.gender === 'female' || data.gender === 'mujer') loadedGender = 'female';
+        else {
+          const cachedGender = localStorage.getItem(`user_gender_${user.uid}`);
+          if (cachedGender === 'male' || cachedGender === 'female') loadedGender = cachedGender;
+        }
+        setSelectedGender(loadedGender);
+        setInitialGender(loadedGender);
+
+        setUsernameAvailability({ status: 'available', message: 'Nombre actual verificado' });
+      }
+
+      setSuccessMsg('¡Excelente! Tu cuenta ha sido vinculada con Google de forma segura. Se ha conservado tu nombre anterior.');
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request' || err?.isUserCancellation) {
+        return;
+      }
+      console.error('Error al vincular con Google:', err);
+      setErrorMsg(err?.message || 'Error al vincular tu cuenta con Google. Por favor, vuelve a intentarlo.');
+    } finally {
+      setLinkingGoogle(false);
+    }
+  };
+
+  useEffect(() => {
+    async function fetchUserData() {
+      const targetUid = uid || user?.uid;
+      if (!targetUid) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setErrorMsg(null);
+
+        // Consultar los datos de la base de datos por email o por ID (UUID)
+        let query = supabase.from('users').select('*');
+        if (targetUid.includes('@')) {
+          query = query.eq('email', targetUid);
+        } else if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetUid)) {
+          query = query.eq('id', targetUid);
+        } else if (user?.email && (targetUid.startsWith('google_') || targetUid === user.uid)) {
+          query = query.eq('email', user.email);
+        } else {
+          query = query.eq('id', targetUid);
+        }
+
+        const { data, error } = await query.maybeSingle();
+
+        let finalUserData = data;
+
+        // Si no se encontró en Supabase pero es el usuario en sesión activa, usar datos de sesión
+        if (!finalUserData && user && (targetUid === user.uid || targetUid.startsWith('google_') || targetUid === user.email)) {
+          finalUserData = {
+            id: user.uid,
+            email: user.email,
+            display_name: user.displayName || 'Usuario',
+            photo_url: user.photoURL,
+            created_at: new Date().toISOString(),
+            is_anonymous: user.isAnonymous,
+            linked_google_at: null,
+          } as SupabaseUser;
+        }
+
+        if (finalUserData) {
+          const data = finalUserData;
+          if (targetUid.startsWith('google_') && data.id && data.id !== targetUid) {
+            try {
+              window.history.replaceState(null, '', `/perfil/${data.id}`);
+            } catch (e) {}
+          }
+          // Si el usuario reclamó un perfil de estudiante, sincronizar su nombre oficial real
+          try {
+            const claimedRaw = localStorage.getItem(`user_claimed_profile_${targetUid}`);
+            if (claimedRaw) {
+              const claimedParsed = JSON.parse(claimedRaw);
+              if (claimedParsed.studentName) {
+                data.display_name = claimedParsed.studentName;
+              }
+            }
+          } catch (e) {}
+
+          setDbUser(data as SupabaseUser);
+
+          const dniVal = (data as any)?.dni || '';
+          setDniInput(dniVal);
+          setIsDniVerified(Boolean((data as any)?.is_verified_student || (data as any)?.claimed_student_id));
+
+          if (typeof (data as any)?.fans_count === 'number') {
+            setFanCount(prev => Math.max(prev, (data as any).fans_count));
+          }
+          if (typeof (data as any)?.knows_count === 'number') {
+            setKnowCount(prev => Math.max(prev, (data as any).knows_count));
+          }
+          if (typeof (data as any)?.crushes_count === 'number') {
+            setCrushesCount(prev => Math.max(prev, (data as any).crushes_count));
+          }
+          
+          const nombresVal = (data as any).nombres || '';
+          const patVal = (data as any).apellido_paterno || '';
+          const matVal = (data as any).apellido_materno || '';
+
+          if (nombresVal || patVal) {
+            setNombresInput(nombresVal);
+            setApellidoPaternoInput(patVal);
+            setApellidoMaternoInput(matVal);
+            const combined = `${nombresVal} ${patVal} ${matVal}`.trim();
+            setDisplayNameInput(combined || data.display_name || '');
+            setInitialDisplayName(combined || data.display_name || '');
+          } else {
+            const name = data.display_name || data.username || '';
+            const parsed = parseFullName(name);
+            setNombresInput(parsed.nombres);
+            setApellidoPaternoInput(parsed.apellidoPaterno);
+            setApellidoMaternoInput(parsed.apellidoMaterno);
+            setDisplayNameInput(name);
+            setInitialDisplayName(name);
+          }
+
+          let loadedGender: 'male' | 'female' | '' = '';
+          if (data.gender === 'male' || data.gender === 'hombre') loadedGender = 'male';
+          else if (data.gender === 'female' || data.gender === 'mujer') loadedGender = 'female';
+          else {
+            const cachedGender = localStorage.getItem(`user_gender_${targetUid}`);
+            if (cachedGender === 'male' || cachedGender === 'female') loadedGender = cachedGender;
+          }
+          setSelectedGender(loadedGender);
+          setInitialGender(loadedGender);
+
+          setUsernameAvailability({ status: 'available', message: 'Nombre actual asignado' });
+        }
+      } catch (err: any) {
+        console.error('Error al obtener datos de Supabase:', err);
+        setErrorMsg('No se pudieron obtener los datos de la base de datos de Supabase. El perfil podría no existir.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchUserData();
+  }, [user, uid]);
+
+  // Carga y sincronización en tiempo real del perfil de estudiante reclamado
+  useEffect(() => {
+    async function loadClaimedStudent() {
+      const targetUid = uid || user?.uid;
+      if (!targetUid) return;
+
+      let studentId: string | null = null;
+      try {
+        const local = localStorage.getItem(`user_claimed_profile_${targetUid}`);
+        if (local) {
+          studentId = JSON.parse(local).studentId;
+        }
+      } catch (e) {}
+
+      if (!studentId && (dbUser as any)?.claimed_student_id) {
+        studentId = (dbUser as any).claimed_student_id;
+      }
+
+      // Si el display_name es Daniel Gustavo Castillo Ramirez o similar, asociar al estudiante de prueba
+      if (!studentId && (dbUser?.display_name?.includes('Daniel Gustavo') || user?.displayName?.includes('Daniel Gustavo'))) {
+        studentId = 'daniel.gustavo.castillo.ramirez';
+      }
+
+      if (studentId) {
+        try {
+          setLoadingStudentData(true);
+          const studentData = await getStudentById(studentId);
+          if (studentData) {
+            const candidateIds = [studentData.id, targetUid, dbUser?.id].filter(Boolean) as string[];
+            const [counts, breakdown, messages] = await Promise.all([
+              getStudentInteractionCounts(studentData.id, dbUser?.id || targetUid),
+              getStudentRatingBreakdown(studentData.id),
+              getStudentLoveMessages(studentData.id, targetUid, candidateIds)
+            ]);
+
+            const realKnows = Math.max(counts.knows, (dbUser as any)?.knows_count || 0, studentData.knows_count || 0);
+            const realFans = Math.max(counts.fan, (dbUser as any)?.fans_count || 0, studentData.fans_count || 0);
+            const realCrushes = Math.max((dbUser as any)?.crushes_count || 0, studentData.crushes_count || 0);
+
+            studentData.knows_count = realKnows;
+            studentData.fans_count = realFans;
+            studentData.crushes_count = realCrushes;
+            setClaimedStudent(studentData);
+            setClaimedRatingBreakdown(breakdown);
+            if (messages && messages.length > 0) {
+              setClaimedLoveMessages(messages);
+            }
+            setFanCount(prev => Math.max(prev, realFans));
+            setKnowCount(prev => Math.max(prev, realKnows));
+            setCrushesCount(prev => Math.max(prev, realCrushes));
+          }
+        } catch (err) {
+          console.warn('Aviso al cargar datos del estudiante reclamado:', err);
+        } finally {
+          setLoadingStudentData(false);
+        }
+      }
+    }
+
+    loadClaimedStudent();
+  }, [user?.uid, uid, dbUser?.display_name, dbUser?.id, (dbUser as any)?.claimed_student_id]);
+
+  // Carga independiente de mensajes de amor de la comunidad (para perfil normal y reclamado)
+  useEffect(() => {
+    async function loadAllProfileLoveMessages() {
+      const targetCandidateIds = [
+        dbUser?.id,
+        (dbUser as any)?.claimed_student_id,
+        claimedStudent?.id,
+        uid,
+        user?.uid
+      ].filter(Boolean) as string[];
+
+      if (targetCandidateIds.length === 0) return;
+
+      try {
+        const msgs = await getStudentLoveMessages(
+          targetCandidateIds[0],
+          user?.uid,
+          targetCandidateIds
+        );
+        if (msgs && msgs.length > 0) {
+          setClaimedLoveMessages(msgs);
+        }
+      } catch (e) {
+        console.warn('Aviso cargando mensajes de amor en perfil:', e);
+      }
+    }
+
+    if (dbUser?.id || uid || user?.uid) {
+      loadAllProfileLoveMessages();
+    }
+  }, [dbUser?.id, (dbUser as any)?.claimed_student_id, claimedStudent?.id, uid, user?.uid]);
+
+  // Sincronizar nombre completo resultante de los 3 campos
+  useEffect(() => {
+    const full = `${nombresInput} ${apellidoPaternoInput} ${apellidoMaternoInput}`.trim();
+    setDisplayNameInput(full);
+  }, [nombresInput, apellidoPaternoInput, apellidoMaternoInput]);
+
+  // Validación con debounce (300ms) mediante RPC 'check_username_available'
+  useEffect(() => {
+    if (!isOwnProfile || loading) return;
+
+    const cleanInput = displayNameInput.trim();
+
+    // Si el nombre no ha cambiado respecto al actual del usuario
+    if (cleanInput.toLowerCase() === initialDisplayName.trim().toLowerCase() && cleanInput !== '') {
+      setUsernameAvailability({
+        status: 'available',
+        message: 'Nombre disponible (tu nombre actual)'
+      });
+      return;
+    }
+
+    if (!cleanInput) {
+      setUsernameAvailability({
+        status: 'idle',
+        message: ''
+      });
+      return;
+    }
+
+    if (cleanInput.length < 2) {
+      setUsernameAvailability({
+        status: 'error',
+        message: 'El nombre debe tener al menos 2 caracteres'
+      });
+      return;
+    }
+
+    if (cleanInput.length > 35) {
+      setUsernameAvailability({
+        status: 'error',
+        message: 'El nombre no puede superar los 35 caracteres'
+      });
+      return;
+    }
+
+    setUsernameAvailability({
+      status: 'checking',
+      message: 'Verificando disponibilidad...'
+    });
+
+    const timer = setTimeout(async () => {
+      try {
+        const result = await checkUsernameAvailable(
+          cleanInput,
+          dbUser?.id,
+          user?.uid
+        );
+
+        setUsernameAvailability({
+          status: result.available ? 'available' : 'taken',
+          message: result.message
+        });
+      } catch (err) {
+        console.error('Error al verificar disponibilidad:', err);
+        setUsernameAvailability({
+          status: 'available',
+          message: 'Nombre disponible'
+        });
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [displayNameInput, initialDisplayName, isOwnProfile, loading, dbUser?.id, user?.uid]);
+
+  // Cargar colecciones en la pestaña 'collections'
+  useEffect(() => {
+    async function loadCollectionsAndItems() {
+      const targetUid = uid || user?.uid;
+      if (!targetUid) return;
+
+      try {
+        setLoadingCollections(true);
+        setCollectionsError('');
+        const { getUserCollections, getAllCollectionItems } = await import('@/src/lib/collections');
+        const cols = await getUserCollections(targetUid);
+        setCollections(cols);
+
+        const items = await getAllCollectionItems(targetUid);
+        setCollectionItems(items);
+
+        if (cols.length > 0 && !selectedColId) {
+          const defaultCol = cols.find(c => c.name.toLowerCase() === 'guardados') || cols[0];
+          setSelectedColId(defaultCol.id);
+        }
+      } catch (err: any) {
+        console.error('Error al cargar colecciones:', err);
+        setCollectionsError('Error al conectar con las colecciones.');
+      } finally {
+        setLoadingCollections(false);
+      }
+    }
+
+    if (profileTab === 'collections') {
+      loadCollectionsAndItems();
+    }
+  }, [profileTab, uid, user?.uid]);
+
+  const handleCreateCollectionInProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetUid = uid || user?.uid;
+    if (!targetUid || !newColInputName.trim()) return;
+
+    setCreatingColProfile(true);
+    setCollectionsError('');
+    try {
+      const { createNewCollection } = await import('@/src/lib/collections');
+      const name = newColInputName.trim();
+      if (collections.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+        setCollectionsError('Ya existe una colección con ese nombre.');
+        setCreatingColProfile(false);
+        return;
+      }
+
+      const newCol = await createNewCollection(targetUid, name);
+      setCollections(prev => [...prev, newCol]);
+      setSelectedColId(newCol.id);
+      setNewColInputName('');
+    } catch (err: any) {
+      console.error('Error al crear colección:', err);
+      setCollectionsError(err?.message || 'Error al crear la colección.');
+    } finally {
+      setCreatingColProfile(false);
+    }
+  };
+
+  const handleDeleteCollectionInProfile = async (colId: string) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid || !colId) return;
+
+    // Actualizar estado optimistamente
+    const updatedCols = collections.filter(c => c.id !== colId);
+    setCollections(updatedCols);
+    setCollectionItems(prev => prev.filter(i => i.collection_id !== colId));
+
+    if (selectedColId === colId) {
+      setSelectedColId(updatedCols.length > 0 ? updatedCols[0].id : null);
+    }
+
+    try {
+      const { deleteCollection } = await import('@/src/lib/collections');
+      await deleteCollection(targetUid, colId);
+    } catch (err) {
+      console.error('Error al eliminar colección:', err);
+    }
+  };
+
+  const handleRemoveItemFromCollectionInProfile = async (colId: string, itemId: string) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid || !colId || !itemId) return;
+
+    try {
+      const { toggleItemInCollection } = await import('@/src/lib/collections');
+      await toggleItemInCollection(targetUid, colId, itemId, {
+        item_type: 'professor', // Dummy payload since we are only removing
+        item_name: '',
+        item_image: null,
+        item_subtitle: null
+      });
+
+      setCollectionItems(prev => prev.filter(i => !(i.collection_id === colId && i.item_id === itemId)));
+    } catch (err) {
+      console.error('Error al quitar elemento de colección:', err);
+    }
+  };
+
+  // Cargar métricas del Admin Dashboard
+  const loadAdminMetrics = async () => {
+    try {
+      setLoadingAdminMetrics(true);
+      const data = await getAdminDashboardMetrics();
+      setAdminMetrics(data);
+    } catch (err) {
+      console.error('Error al cargar métricas de administrador:', err);
+    } finally {
+      setLoadingAdminMetrics(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profileTab === 'admin' || (dbUser?.role === 'admin' && !adminMetrics)) {
+      loadAdminMetrics();
+    }
+  }, [profileTab, dbUser?.role]);
+
+  // Cargar interacciones en la pestaña 'interactions' o al iniciar
+  const loadInteractions = async () => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    try {
+      setLoadingInteractions(true);
+      setInteractionsError('');
+      const items = await getUserInteractions(targetUid);
+      setInteractions(items);
+    } catch (err: any) {
+      console.error('Error al cargar interacciones:', err);
+      setInteractionsError('No se pudieron cargar tus interacciones de Supabase.');
+    } finally {
+      setLoadingInteractions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profileTab === 'interactions') {
+      loadInteractions();
+    }
+  }, [profileTab, uid, user?.uid]);
+
+  const handleRemoveInteraction = async (item: UserInteractionItem) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    // Actualización optimista inmediata
+    setInteractions(prev => prev.filter(i => i.id !== item.id));
+
+    try {
+      const ok = await removeUserInteraction(targetUid, item.professorId, item.type);
+      if (!ok) {
+        // Recargar en caso de error
+        loadInteractions();
+      }
+    } catch (err) {
+      console.error('Error al retirar interacción:', err);
+      loadInteractions();
+    }
+  };
+
+  // Cargar suscripciones a notificaciones en la pestaña 'subscriptions' o inicial
+  const loadSubscriptions = async () => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    try {
+      setLoadingSubscriptions(true);
+      setSubscriptionsError('');
+      const [profs, studs] = await Promise.all([
+        getUserProfessorSubscriptions(targetUid),
+        getUserStudentSubscriptions(targetUid)
+      ]);
+      setProfSubscriptions(profs);
+      setStudentSubscriptions(studs);
+    } catch (err: any) {
+      console.error('Error al cargar suscripciones a notificaciones:', err);
+      setSubscriptionsError('No se pudieron sincronizar tus suscripciones.');
+    } finally {
+      setLoadingSubscriptions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profileTab === 'subscriptions') {
+      loadSubscriptions();
+    }
+  }, [profileTab, uid, user?.uid]);
+
+  const handleRemoveProfSubscription = async (item: UserProfessorSubscriptionItem) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    // Optimista
+    setProfSubscriptions(prev => prev.filter(p => p.id !== item.id && p.professorId !== item.professorId));
+
+    try {
+      await removeProfessorNotificationSubscription(item.professorId, targetUid);
+    } catch (err) {
+      console.error('Error al retirar suscripción de profesor:', err);
+      loadSubscriptions();
+    }
+  };
+
+  const handleRemoveStudentSubscription = async (item: UserStudentSubscriptionItem) => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    // Optimista
+    setStudentSubscriptions(prev => prev.filter(s => s.id !== item.id && s.studentId !== item.studentId));
+
+    try {
+      await removeStudentNotificationSubscription(item.studentId, targetUid);
+    } catch (err) {
+      console.error('Error al retirar suscripción de estudiante:', err);
+      loadSubscriptions();
+    }
+  };
+
+  const navigateTo = (url: string) => {
+    window.history.pushState(null, '', url);
+    window.dispatchEvent(new Event('popstate'));
+  };
+
+  const handleSaveChanges = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !dbUser || !isOwnProfile) return;
+
+    const cleanNombres = nombresInput.trim();
+    const cleanPaterno = apellidoPaternoInput.trim();
+    const cleanMaterno = apellidoMaternoInput.trim();
+    const cleanDni = dniInput.trim().replace(/\D/g, '');
+
+    if (!cleanNombres) {
+      setErrorMsg('Por favor, ingresa tus nombres.');
+      return;
+    }
+
+    if (!cleanPaterno) {
+      setErrorMsg('Por favor, ingresa tu apellido paterno.');
+      return;
+    }
+
+    if (cleanDni && cleanDni.length !== 8) {
+      setErrorMsg('El número de DNI debe contener exactamente 8 dígitos.');
+      return;
+    }
+
+    const cleanFullName = `${cleanNombres} ${cleanPaterno} ${cleanMaterno}`.trim();
+    const fixedInstituteId = '9029cbec-ead6-48ae-aace-3c348b0dc325';
+
+    setSaving(true);
+    setSuccessMsg(null);
+    setErrorMsg(null);
+
+    try {
+      // Determinar si el usuario ya es un perfil verificado/reclamado
+      const isClaimedUser = Boolean(
+        (dbUser as any)?.profile_appeal || 
+        (dbUser as any)?.claimed_student_id || 
+        (dbUser as any)?.is_verified_student || 
+        user.profile_appeal || 
+        user.claimed_student_id
+      );
+
+      // 1. Actualizar en Supabase tabla 'users' (solo incluir institute_id si reclamó perfil)
+      const updatePayload: any = { 
+        display_name: cleanFullName,
+        nombres: cleanNombres,
+        apellido_paterno: cleanPaterno,
+        apellido_materno: cleanMaterno || null,
+      };
+
+      if (isClaimedUser) {
+        updatePayload.institute_id = fixedInstituteId;
+        updatePayload.profile_appeal = true;
+      }
+
+      if (!isDniVerified) {
+        updatePayload.dni = cleanDni || null;
+      }
+
+      try {
+        let updateQuery = supabase.from('users').update(updatePayload);
+
+        if (user.email) {
+          updateQuery = updateQuery.eq('email', user.email);
+        } else {
+          updateQuery = updateQuery.eq('id', dbUser?.id || user.uid);
+        }
+
+        const { error: fullUpdateErr } = await updateQuery;
+
+        if (fullUpdateErr) {
+          // Fallback a display_name si columnas estructuradas fallasen
+          let fallbackQuery = supabase.from('users').update({ 
+            display_name: cleanFullName,
+            ...(isClaimedUser ? { institute_id: fixedInstituteId, profile_appeal: true } : {}),
+            ...(isDniVerified ? {} : { dni: cleanDni || null })
+          });
+          if (user.email) {
+            fallbackQuery = fallbackQuery.eq('email', user.email);
+          } else {
+            fallbackQuery = fallbackQuery.eq('id', dbUser?.id || user.uid);
+          }
+          await fallbackQuery;
+        }
+      } catch (uErr) {
+        let fallbackCatchQuery = supabase.from('users').update({ 
+          display_name: cleanFullName,
+          ...(isClaimedUser ? { institute_id: fixedInstituteId, profile_appeal: true } : {}),
+          ...(isDniVerified ? {} : { dni: cleanDni || null })
+        });
+        if (user.email) {
+          fallbackCatchQuery = fallbackCatchQuery.eq('email', user.email);
+        } else {
+          fallbackCatchQuery = fallbackCatchQuery.eq('id', dbUser?.id || user.uid);
+        }
+        await fallbackCatchQuery;
+      }
+
+      // Si tiene perfil oficial de estudiante vinculado, sincronizar su nombre oficial
+      if ((dbUser as any)?.claimed_student_id) {
+        try {
+          await supabase
+            .from('students')
+            .update({
+              nombre: cleanNombres,
+              apellidos: `${cleanPaterno} ${cleanMaterno}`.trim(),
+              nombre_completo: cleanFullName,
+              institute_id: fixedInstituteId,
+            })
+            .eq('id', (dbUser as any).claimed_student_id);
+        } catch (sErr) {
+          console.warn('Aviso sincronizando tabla students:', sErr);
+        }
+      }
+
+      // 2. Actualizar 'gender' en Supabase si la columna existe en la tabla
+      try {
+        let genderQuery = supabase.from('users').update({ gender: selectedGender || null });
+        if (user.email) {
+          genderQuery = genderQuery.eq('email', user.email);
+        } else {
+          genderQuery = genderQuery.eq('id', dbUser?.id || user.uid);
+        }
+        const { error: genderErr } = await genderQuery;
+
+        if (genderErr) {
+          console.warn('Nota sobre columna gender en tabla users:', genderErr.message);
+        }
+      } catch (gErr) {
+        console.warn('Aviso guardando gender en Supabase:', gErr);
+      }
+
+      // Guardar siempre en localStorage de respaldo para el usuario
+      if (selectedGender) {
+        localStorage.setItem(`user_gender_${user.uid}`, selectedGender);
+      } else {
+        localStorage.removeItem(`user_gender_${user.uid}`);
+      }
+
+      try {
+        localStorage.setItem(`user_names_${user.uid}`, JSON.stringify({
+          nombres: cleanNombres,
+          apellidoPaterno: cleanPaterno,
+          apellidoMaterno: cleanMaterno,
+          fullName: cleanFullName
+        }));
+      } catch (e) {}
+
+      // 3. Actualizar en sesión local
+      updateAuthUserProfile({
+        displayName: cleanFullName,
+        ...(isClaimedUser ? { institute_id: fixedInstituteId, profile_appeal: true } : {}),
+        dni: cleanDni || (dbUser as any)?.dni,
+      });
+
+      setInitialDisplayName(cleanFullName);
+      setDisplayNameInput(cleanFullName);
+      setInitialGender(selectedGender);
+      setDbUser({
+        ...dbUser,
+        display_name: cleanFullName,
+        gender: selectedGender || null,
+        dni: cleanDni || (dbUser as any)?.dni || null,
+        institute_id: isClaimedUser ? fixedInstituteId : (dbUser?.institute_id || null),
+        profile_appeal: isClaimedUser,
+      });
+
+      setSuccessMsg('¡Datos y DNI oficial guardados exitosamente en la base de datos!');
+      
+      // Auto-ocultar el mensaje de éxito después de 4 segundos
+      setTimeout(() => {
+        setSuccessMsg(null);
+      }, 4000);
+
+    } catch (err: any) {
+      console.error('Error al guardar datos en Supabase:', err);
+      setErrorMsg(err?.message || 'Hubo un problema al guardar los cambios en la base de datos.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!user && isOwnProfile) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-12 text-center space-y-6">
+        <div className="inline-flex p-4 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-[#eab308]">
+          <AlertCircle className="w-12 h-12" />
+        </div>
+        <h2 className="text-2xl font-black text-white uppercase tracking-tight">Acceso Restringido</h2>
+        <p className="text-zinc-400 max-w-md mx-auto text-sm">
+          Por favor inicia sesión con Google o como usuario Anónimo para poder consultar y editar tu perfil en la base de datos.
+        </p>
+        <button
+          onClick={onBackToHome}
+          className="px-6 py-2.5 rounded-lg bg-[#eab308] hover:bg-[#d9a307] text-black font-extrabold text-xs tracking-wider uppercase transition-colors cursor-pointer"
+        >
+          Volver al Inicio
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
+      
+      {/* Botón de retorno */}
+      <button
+        onClick={onBackToHome}
+        className="mb-6 inline-flex items-center gap-2 text-xs font-bold text-zinc-400 hover:text-[#eab308] transition-colors cursor-pointer group"
+      >
+        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+        VOLVER A LA PÁGINA PRINCIPAL
+      </button>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* LADO IZQUIERDO: Tarjeta Resumen */}
+        <div className="md:col-span-1 bg-[#0d0d0d] border border-[#ffffff10] rounded-2xl p-6 flex flex-col items-center text-center space-y-4 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-20 bg-gradient-to-b from-[#eab3080c] to-transparent"></div>
+          
+          <div className="relative pt-4 group">
+            {dbUser?.photo_url ? (
+              <img
+                src={dbUser.photo_url}
+                alt={dbUser.display_name || 'Usuario'}
+                onClick={() => setIsViewPhotoModalOpen(true)}
+                className={`w-24 h-24 rounded-full object-cover ring-3 transition-all cursor-pointer hover:opacity-95 ${
+                  dbUser?.role === 'admin'
+                    ? 'ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.45)]'
+                    : 'ring-[#eab308] shadow-[0_0_20px_rgba(234,179,8,0.2)]'
+                }`}
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div 
+                onClick={() => isOwnProfile && setIsAvatarModalOpen(true)}
+                className={`w-24 h-24 rounded-full bg-[#151515] border flex items-center justify-center text-3xl font-black ring-3 shadow-lg transition-all ${
+                  isOwnProfile ? 'cursor-pointer hover:border-[#eab308]' : ''
+                } ${
+                  dbUser?.role === 'admin'
+                    ? 'border-amber-400/80 text-amber-400 ring-amber-400/40 shadow-[0_0_25px_rgba(245,158,11,0.4)]'
+                    : 'border-[#eab308]/40 text-[#eab308] ring-[#eab308]/20'
+                }`}
+              >
+                {(dbUser?.display_name || 'U').charAt(0).toUpperCase()}
+              </div>
+            )}
+
+            {/* Hover overlay para ver la foto en grande si ya existe foto */}
+            {dbUser?.photo_url && (
+              <button
+                type="button"
+                onClick={() => setIsViewPhotoModalOpen(true)}
+                className="absolute inset-0 top-4 w-24 h-24 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 cursor-pointer z-10 backdrop-blur-xs"
+                title="Ver foto en tamaño completo"
+              >
+                <Eye className="w-5 h-5 text-[#eab308]" />
+                <span className="text-[9px] font-black uppercase tracking-wider text-amber-300">Ver foto</span>
+              </button>
+            )}
+            
+            {dbUser?.role === 'admin' ? (
+              <div 
+                title="Administrador Verificado"
+                className="absolute bottom-0 right-0 p-1.5 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 text-black shadow-[0_0_16px_rgba(245,158,11,0.7)] ring-3 ring-[#0d0d0d] flex items-center justify-center animate-in zoom-in duration-300 z-20"
+              >
+                <CheckCircle2 className="w-4 h-4 text-black stroke-[3]" />
+              </div>
+            ) : (
+              <span className={`absolute bottom-0 right-0 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider z-20 ${
+                dbUser?.is_anonymous 
+                  ? 'bg-[#151515] border border-[#eab308]/30 text-[#eab308]' 
+                  : 'bg-[#eab308] text-black'
+              }`}>
+                {dbUser?.is_anonymous ? 'Anónimo' : 'Google'}
+              </span>
+            )}
+          </div>
+
+          {/* Botón visible de cambiar foto para mayor facilidad de uso */}
+          {isOwnProfile && (
+            <button
+              type="button"
+              onClick={() => setIsAvatarModalOpen(true)}
+              className="px-3 py-1 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/60 hover:border-[#eab308] text-[11px] font-bold text-zinc-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm group active:scale-95"
+              title="Cambiar foto de perfil (Máx 5 MB, optimizada a 90-100 KB)"
+            >
+              <Camera className="w-3.5 h-3.5 text-[#eab308] group-hover:scale-110 transition-transform" />
+              <span>Cambiar Foto</span>
+            </button>
+          )}
+
+          <div className="space-y-1.5 w-full flex flex-col items-center">
+            <div className="flex items-center justify-center gap-2 max-w-full">
+              <h3 className="text-xl font-black text-white tracking-tight truncate">
+                {dbUser?.display_name || 'Cargando...'}
+              </h3>
+              {(dbUser?.gender || selectedGender) && (
+                <span 
+                  className={`text-lg font-black shrink-0 select-none ${(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? 'text-blue-400' : 'text-pink-400'}`}
+                  title={(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? 'Hombre ♂' : 'Mujer ♀'}
+                >
+                  {(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? '♂' : '♀'}
+                </span>
+              )}
+            </div>
+            
+            {dbUser?.role === 'admin' && (
+              <div className="pt-0.5 pb-0.5">
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_14px_rgba(245,158,11,0.25)]">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400 stroke-[2.5]" />
+                  ADMIN
+                </span>
+              </div>
+            )}
+
+            {/* Badge de Estudiante Oficial Verificado */}
+            {claimedStudent ? (
+              <div className="pt-1 flex flex-col items-center gap-1.5 animate-in fade-in">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_14px_rgba(16,185,129,0.25)]">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                  ESTUDIANTE VERIFICADO
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-mono">
+                    DNI: {claimedStudent.dni || '60036463'}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[#eab308] text-[10px] font-black">
+                    <Star className="w-3 h-3 fill-[#eab308]" />
+                    <span>{(claimedStudent.score || 0).toFixed(1)}</span>
+                  </span>
+                </div>
+              </div>
+            ) : (typeof window !== 'undefined' && user?.uid && localStorage.getItem(`user_claimed_profile_${dbUser?.id || user.uid}`)) ? (
+              <div className="pt-0.5 pb-0.5">
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_14px_rgba(16,185,129,0.25)]">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                  ESTUDIANTE VERIFICADO
+                </span>
+              </div>
+            ) : null}
+
+            {isOwnProfile && (
+              <p className="text-xs text-zinc-400 truncate max-w-full">
+                {dbUser?.email || 'Sesión Local Sin Correo'}
+              </p>
+            )}
+
+            {(dbUser?.gender || selectedGender) && (
+              <div className="pt-1">
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase border shadow-sm ${
+                  (dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre'
+                    ? 'bg-blue-950/50 border-blue-500/40 text-blue-300'
+                    : 'bg-pink-950/50 border-pink-500/40 text-pink-300'
+                }`}>
+                  <span className="text-xs font-black">
+                    {(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? '♂' : '♀'}
+                  </span>
+                  <span>
+                    {(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? 'Hombre' : 'Mujer'}
+                  </span>
+                </span>
+              </div>
+            )}
+          </div>
+
+          {dbUser?.role === 'admin' && (
+            <div className="w-full border-t border-[#ffffff10] pt-4 space-y-3 text-left">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-zinc-500 font-medium">Rol de Cuenta</span>
+                {dbUser?.role === 'admin' ? (
+                  <span className="inline-flex items-center gap-1 font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md text-[10px] tracking-wider uppercase shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                    <ShieldCheck className="w-3 h-3 text-amber-400" /> ADMIN VERIFICADO
+                  </span>
+                ) : (
+                  <span className="font-bold text-zinc-400 uppercase font-mono text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05]">
+                    {dbUser?.role === 'student' ? 'Estudiante' : (dbUser?.role || 'Estudiante')}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-zinc-500 font-medium">Proveedor Auth</span>
+                <span className="font-bold text-zinc-300 uppercase font-mono">
+                  {dbUser?.is_anonymous ? 'Firebase Anon' : 'Google OAuth'}
+                </span>
+              </div>
+              
+              {isOwnProfile && (
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-zinc-500 font-medium">ID en Supabase</span>
+                  <span className="font-mono text-zinc-400 text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05] truncate max-w-[110px]" title={dbUser?.id}>
+                    {dbUser?.id ? `${dbUser.id.substring(0, 8)}...` : '...'}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-zinc-500 font-medium">Sincronización</span>
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <Database className="w-3 h-3" /> Activa
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* LADO DERECHO: Formulario y Consulta Base de Datos */}
+        <div className="md:col-span-2 bg-[#0d0d0d] border border-[#ffffff10] rounded-2xl p-6 sm:p-8 space-y-6">
+          
+          {/* Métricas Superiores de Reputación (Yo te conozco / Fans en la tabla 'users_actitud') */}
+          <div className="grid grid-cols-2 gap-3 max-w-md bg-[#070707] border border-zinc-800/80 rounded-2xl p-3 sm:p-4 shadow-lg animate-in fade-in duration-300">
+            {/* Yo te conozco */}
+            <button
+              type="button"
+              disabled={isSelfProfile}
+              onClick={() => handleToggleActitud('yo_te_conozco')}
+              className={`bg-[#0f0f0f] border rounded-xl p-3 text-center space-y-1 transition select-none ${
+                isSelfProfile
+                  ? 'border-blue-500/20 opacity-90 cursor-default'
+                  : currentVote === 'yo_te_conozco'
+                    ? 'border-blue-500 bg-blue-500/15 shadow-[0_0_15px_rgba(59,130,246,0.25)] cursor-pointer active:scale-95'
+                    : 'border-blue-500/20 hover:border-blue-500/40 hover:bg-[#121212] cursor-pointer active:scale-95'
+              }`}
+              title={isSelfProfile ? 'Tus votos acumulados de la comunidad' : 'Clic para indicar que conoces a este usuario'}
+            >
+              <div className="flex items-center justify-center gap-1.5 text-blue-400">
+                <Users className="w-4 h-4" />
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  {currentVote === 'yo_te_conozco' ? '✓ Yo te conozco' : 'Yo te conozco'}
+                </span>
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-white">
+                {knowCount}
+              </div>
+            </button>
+
+            {/* Fan */}
+            <button
+              type="button"
+              disabled={isSelfProfile}
+              onClick={() => handleToggleActitud('fans')}
+              className={`bg-[#0f0f0f] border rounded-xl p-3 text-center space-y-1 transition select-none ${
+                isSelfProfile
+                  ? 'border-pink-500/20 opacity-90 cursor-default'
+                  : currentVote === 'fans'
+                    ? 'border-pink-500 bg-pink-500/15 shadow-[0_0_15px_rgba(236,72,153,0.25)] cursor-pointer active:scale-95'
+                    : 'border-pink-500/20 hover:border-pink-500/40 hover:bg-[#121212] cursor-pointer active:scale-95'
+              }`}
+              title={isSelfProfile ? 'Tus fans acumulados en la comunidad' : 'Clic para hacerte fan de este usuario'}
+            >
+              <div className="flex items-center justify-center gap-1.5 text-pink-400">
+                <Heart className={`w-4 h-4 ${currentVote === 'fans' ? 'fill-pink-500 text-pink-500' : 'fill-pink-500/30'}`} />
+                <span className="text-[10px] font-black uppercase tracking-wider">
+                  {currentVote === 'fans' ? '✓ Fans' : 'Fans'}
+                </span>
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-white">
+                {fanCount}
+              </div>
+            </button>
+          </div>
+
+          {/* Navegación Principal de Pestañas (Universal para todos los perfiles) */}
+          <div className="space-y-3">
+            {/* Barra de pestañas principales: Mis Datos, Reseñas, Crushes, Estadísticas */}
+            <div className="flex items-center gap-1.5 bg-[#050505] p-1.5 rounded-xl border border-zinc-800/40 max-w-full overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={() => setClaimedMainTab('mis_datos')}
+                title={isOwnProfile ? 'Mis Datos' : 'Datos'}
+                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  claimedMainTab === 'mis_datos'
+                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
+                }`}
+              >
+                <User className="w-4 h-4 flex-shrink-0" />
+                <span>{isOwnProfile ? 'Mis Datos' : 'Datos'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setClaimedMainTab('reseñas')}
+                title="Reseñas"
+                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  claimedMainTab === 'reseñas'
+                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
+                }`}
+              >
+                <Star className="w-4 h-4 flex-shrink-0 text-current" />
+                <span>Reseñas</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setClaimedMainTab('crushes')}
+                title="Crushes"
+                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  claimedMainTab === 'crushes'
+                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
+                }`}
+              >
+                <Heart className="w-4 h-4 flex-shrink-0 text-current" />
+                <span>Crushes</span>
+                {((claimedStudent?.crushes_count || 0) > 0) && (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black ${
+                    claimedMainTab === 'crushes' ? 'bg-black text-[#eab308]' : 'bg-pink-500/20 text-pink-300'
+                  }`}>
+                    {claimedStudent?.crushes_count}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setClaimedMainTab('estadisticas')}
+                title="Estadísticas"
+                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  claimedMainTab === 'estadisticas'
+                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4 flex-shrink-0 text-current" />
+                <span>Estadísticas</span>
+              </button>
+            </div>
+
+            {/* Sub-pestañas dentro de "Mis Datos" */}
+            {claimedMainTab === 'mis_datos' && (
+              <div className="flex items-center gap-1.5 bg-[#090909] p-1 rounded-xl border border-zinc-800/30 max-w-full overflow-x-auto no-scrollbar animate-in fade-in duration-200">
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('info')}
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    profileTab === 'info'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  <span>Información</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('collections')}
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    profileTab === 'collections'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  <span>Colecciones</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('interactions')}
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    profileTab === 'interactions'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  <span>Mis Interacciones</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('subscriptions')}
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    profileTab === 'subscriptions'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  <div className="relative flex items-center justify-center">
+                    <span>Suscripciones</span>
+                    {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
+                      <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
+                        {profSubscriptions.length + studentSubscriptions.length}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* RENDERIZADO CONDICIONAL DE CONTENIDO DE PESTAÑAS */}
+          {claimedMainTab === 'reseñas' ? (
+            /* TAB: RESEÑAS DEL USUARIO / ESTUDIANTE */
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="bg-[#050505] border border-zinc-800/60 rounded-2xl p-6 sm:p-8 space-y-6">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                      <Star className="w-5 h-5 text-[#eab308] fill-[#eab308]" />
+                      Resumen de Estrellas y Reputación
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      Calificaciones de la comunidad en la red social Starryz.
+                    </p>
+                  </div>
+                  <div className="px-3 py-1 rounded-full bg-[#eab308]/15 border border-[#eab308]/30 text-[#eab308] text-xs font-black tracking-wider uppercase">
+                    ★ {(claimedStudent?.score || 0).toFixed(1)} / 5.0
+                  </div>
+                </div>
+
+                <div className="flex flex-col md:flex-row items-center gap-8 pt-2">
+                  <div className="bg-[#0f0f0f] border border-zinc-800/40 rounded-2xl p-6 text-center w-full md:w-52 space-y-3 shadow-lg">
+                    <span className="block text-5xl font-black text-[#eab308] tracking-tighter">
+                      {(claimedStudent?.score || 0).toFixed(1)}
+                    </span>
+                    <div className="flex items-center justify-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star 
+                          key={star} 
+                          className={`w-5 h-5 ${
+                            star <= Math.round(claimedStudent?.score || 0)
+                              ? 'fill-[#eab308] text-[#eab308]' 
+                              : 'text-zinc-700'
+                          }`} 
+                        />
+                      ))}
+                    </div>
+                    <span className="block text-[10px] uppercase text-zinc-500 font-extrabold tracking-widest">
+                      {claimedStudent?.total_ratings || 0} VOTOS TOTALES
+                    </span>
+                  </div>
+
+                  <div className="flex-1 w-full space-y-2.5">
+                    {[5, 4, 3, 2, 1].map((stars) => {
+                      const count = claimedRatingBreakdown[stars] || 0;
+                      const totalVotesCount = Object.values(claimedRatingBreakdown).reduce((a, b) => a + b, 0);
+                      const percent = totalVotesCount > 0 ? `${((count / totalVotesCount) * 100).toFixed(0)}%` : '0%';
+
+                      return (
+                        <div key={stars} className="flex items-center gap-3">
+                          <span className="text-xs font-bold text-zinc-400 w-3 text-right">
+                            {stars}
+                          </span>
+                          <div className="flex-1 h-2.5 bg-[#121212] rounded-full overflow-hidden border border-zinc-800/40">
+                            <div 
+                              className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-500" 
+                              style={{ width: percent }}
+                            />
+                          </div>
+                          <span className="text-xs font-mono font-bold text-zinc-400 w-8 text-right">
+                            {count}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400 space-y-1">
+                  <p className="font-bold text-white flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-[#eab308]" />
+                    Reputación en la Comunidad
+                  </p>
+                  <p>
+                    Cualquier miembro de la comunidad puede calificar tu perfil con estrellas. Tus estrellas aumentan tu reputación en la red social.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : claimedMainTab === 'crushes' ? (
+            /* TAB: CRUSHES RECIBIDOS */
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="bg-[#050505] border border-zinc-800/60 rounded-2xl p-6 sm:p-8 space-y-6">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                      <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
+                      Flechazos y Mensajes de Amor
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      {isSelfProfile 
+                        ? 'Personas que te han marcado como su crush de forma anónima.' 
+                        : 'Expresa tu admiración marcando a este usuario como tu crush.'}
+                    </p>
+                  </div>
+                  <div className="px-3 py-1 rounded-full bg-pink-500/15 border border-pink-500/30 text-pink-400 text-xs font-black tracking-wider uppercase flex items-center gap-1.5">
+                    <span>💘 {crushesCount} Flechazos</span>
+                  </div>
+                </div>
+
+                <div className="p-6 rounded-2xl bg-gradient-to-b from-pink-950/20 to-[#0e0e0e] border border-pink-500/20 text-center space-y-3 shadow-md">
+                  <div className="w-16 h-16 mx-auto rounded-full bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400 shadow-[0_0_20px_rgba(236,72,153,0.2)]">
+                    <Heart className={`w-8 h-8 ${hasCrushedUser ? 'fill-pink-500 text-pink-500 scale-110' : 'fill-pink-500/30 text-pink-400'} animate-pulse`} />
+                  </div>
+                  <div>
+                    <div className="text-4xl font-black text-white">
+                      {crushesCount}
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1 uppercase font-bold tracking-wider">
+                      {crushesCount === 1 ? 'Persona le tiene como crush' : 'Personas le tienen como crush'}
+                    </p>
+                  </div>
+
+                  {/* Botón interactivo para marcar/desmarcar Crush cuando es perfil de otro usuario */}
+                  {!isSelfProfile && (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={handleToggleCrush}
+                        className={`px-6 py-2.5 rounded-full font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer shadow-md active:scale-95 ${
+                          hasCrushedUser
+                            ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)] hover:bg-pink-600'
+                            : 'bg-zinc-900 hover:bg-zinc-800 text-pink-400 border border-pink-500/40 hover:border-pink-500'
+                        }`}
+                      >
+                        <Heart className={`w-4 h-4 ${hasCrushedUser ? 'fill-white' : 'fill-pink-500/30'}`} />
+                        <span>{hasCrushedUser ? '✓ Es tu Crush (Quitar Flechazo)' : '💘 Marcar como mi Crush'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-4 pt-2">
+                  <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <span>Mensajes de Amor y Admiración</span>
+                    <span className="text-xs text-zinc-500 font-normal">({claimedLoveMessages.length})</span>
+                  </h4>
+
+                  {claimedLoveMessages.length === 0 ? (
+                    <div className="p-8 rounded-xl bg-[#0f0f0f] border border-zinc-800/40 text-center space-y-2">
+                      <p className="text-zinc-400 text-xs">Aún no has recibido mensajes de amor.</p>
+                      <p className="text-zinc-600 text-[11px]">Cuando alguien te dé un flechazo y te deje un mensaje en tu perfil, aparecerá aquí.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {claimedLoveMessages.map((msg) => (
+                        <div 
+                          key={msg.id}
+                          className="p-4 rounded-xl bg-[#0f0f0f] border border-zinc-800/60 space-y-2 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-pink-400 flex items-center gap-1.5 font-mono">
+                              <span>💌</span>
+                              <span>
+                                {msg.user_uid
+                                  ? `Anónimo-${msg.user_uid.substring(0, 8)}`
+                                  : (msg.author_name?.startsWith('Anónimo-') ? msg.author_name : 'Anónimo')}
+                              </span>
+                              <GenderBadge gender={msg.author_gender} size="sm" />
+                            </span>
+                            <span className="text-[10px] text-zinc-500 font-mono">
+                              {msg.created_at ? new Date(msg.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : ''}
+                            </span>
+                          </div>
+                          <p className="text-sm text-zinc-300 italic whitespace-pre-wrap leading-relaxed">
+                            "{msg.message}"
+                          </p>
+                          <div className="flex items-center gap-2 pt-1 text-xs text-zinc-500">
+                            <Heart className="w-3.5 h-3.5 fill-pink-500 text-pink-500" />
+                            <span>{msg.hearts_count || 0} reacciones</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : claimedMainTab === 'estadisticas' ? (
+            /* TAB: ESTADÍSTICAS Y TENDENCIAS */
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <StudentTrendsEngine
+                studentId={claimedStudent?.id || dbUser?.firebase_uid || 'user'}
+                studentName={claimedStudent?.nombre_completo || dbUser?.display_name || 'Usuario'}
+                currentValues={{
+                  knowsCount: claimedStudent?.knows_count || 0,
+                  fansCount: claimedStudent?.fans_count || 0,
+                  crushesCount: claimedStudent?.crushes_count || 0,
+                  score: claimedStudent?.score || 0,
+                  viewsCount: claimedStudent?.views_count || 0
+                }}
+              />
+            </div>
+          ) : (
+            /* TAB: MIS DATOS / PERFIL ESTÁNDAR */
+            <>
+
+          {profileTab === 'info' ? (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                    <ShieldCheck className={`w-5 h-5 ${dbUser?.role === 'admin' ? 'text-amber-400' : 'text-[#eab308]'}`} /> 
+                    {dbUser?.role === 'admin' 
+                      ? (isOwnProfile ? 'Panel de Perfil Administrador' : 'Perfil Administrador de Starryz')
+                      : (isOwnProfile ? 'Datos del Alumno en la DB' : 'Datos Públicos del Alumno')}
+                  </h3>
+
+                  {dbUser?.role === 'admin' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.4)]">
+                      <ShieldCheck className="w-3.5 h-3.5 text-black stroke-[3]" /> ADMIN VERIFICADO
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-400 mt-1">
+                  {dbUser?.role === 'admin'
+                    ? 'Esta cuenta cuenta con privilegios administrativos autenticados en la plataforma Starryz.'
+                    : (isOwnProfile 
+                      ? 'Consulta en tiempo real los campos guardados en Supabase asociados a tu credencial de Firebase. Puedes modificar tu nombre público a continuación.'
+                      : 'Esta es la información comunitaria que el estudiante comparte públicamente en Starryz 5 de forma sincronizada con Supabase.')}
+                </p>
+              </div>
+
+              {loading ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <Loader2 className="w-8 h-8 text-[#eab308] animate-spin" />
+                  <p className="text-xs text-zinc-400 font-mono">Consultando base de datos PostgreSQL...</p>
+                </div>
+              ) : (
+                <form onSubmit={handleSaveChanges} className="space-y-6">
+                  
+                  {/* Avisos */}
+                  {successMsg && (
+                    <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                      <span>{successMsg}</span>
+                    </div>
+                  )}
+
+                  {errorMsg && (
+                    <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/30 text-red-300 text-xs flex items-center gap-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                      <span>{errorMsg}</span>
+                    </div>
+                  )}
+
+                  {/* Banner si el usuario no tiene DNI registrado aún */}
+                  {isOwnProfile && !dniInput && !isDniVerified && (
+                    <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-3 animate-in fade-in">
+                      <CreditCard className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <strong className="text-white block font-bold text-xs uppercase tracking-wide">
+                          Registro de DNI Requerido para Reclamar Perfil
+                        </strong>
+                        <p className="text-zinc-300 text-xs leading-relaxed">
+                          Para poder reclamar y certificar tu perfil oficial de estudiante en el instituto, ingresa tu número de DNI oficial en el campo inferior y presiona <strong>GUARDAR CAMBIOS</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Grid Formulario */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    
+                    {/* 3 CAMPOS DE IDENTIDAD REAL: Nombres, Apellido Paterno, Apellido Materno */}
+                    <div className="sm:col-span-2 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5" /> Identidad Oficial (Nombres y Apellidos)
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                        {/* 1. NOMBRES */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                            Nombres <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={nombresInput}
+                            onChange={(e) => setNombresInput(e.target.value)}
+                            disabled={!isOwnProfile || saving}
+                            placeholder="Ej. Daniel Gustavo"
+                            className={`w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition-all ${
+                              isOwnProfile 
+                                ? 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
+                                : 'bg-[#121212] border border-[#ffffff0a] text-zinc-300 cursor-not-allowed font-semibold'
+                            }`}
+                          />
+                        </div>
+
+                        {/* 2. APELLIDO PATERNO */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                            Apellido Paterno <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={apellidoPaternoInput}
+                            onChange={(e) => setApellidoPaternoInput(e.target.value)}
+                            disabled={!isOwnProfile || saving}
+                            placeholder="Ej. Castillo"
+                            className={`w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition-all ${
+                              isOwnProfile 
+                                ? 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
+                                : 'bg-[#121212] border border-[#ffffff0a] text-zinc-300 cursor-not-allowed font-semibold'
+                            }`}
+                          />
+                        </div>
+
+                        {/* 3. APELLIDO MATERNO */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                            Apellido Materno
+                          </label>
+                          <input
+                            type="text"
+                            value={apellidoMaternoInput}
+                            onChange={(e) => setApellidoMaternoInput(e.target.value)}
+                            disabled={!isOwnProfile || saving}
+                            placeholder="Ej. Ramirez"
+                            className={`w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition-all ${
+                              isOwnProfile 
+                                ? 'bg-[#151515] border border-[#ffffff15] focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]' 
+                                : 'bg-[#121212] border border-[#ffffff0a] text-zinc-300 cursor-not-allowed font-semibold'
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Vista previa del Nombre Completo en el Buscador */}
+                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#111111] border border-zinc-800/80 text-xs">
+                        <div className="flex items-center gap-2 text-zinc-400 text-[11px]">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Nombre registrado para búsqueda:</span>
+                        </div>
+                        <span className="text-[#eab308] font-black uppercase tracking-wide truncate max-w-[240px] sm:max-w-none">
+                          {`${nombresInput} ${apellidoPaternoInput} ${apellidoMaternoInput}`.trim() || 'Sin nombre asignado'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* DNI Oficial para Reclamo de Perfil */}
+                    <div className="sm:col-span-2 space-y-2 p-4 rounded-2xl bg-[#111111] border border-zinc-800/80">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
+                          <CreditCard className="w-3.5 h-3.5" /> DNI Oficial (8 Dígitos)
+                        </label>
+                        {isDniVerified ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+                            <CheckCircle2 className="w-3 h-3" /> Verificado Oficial
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-zinc-500 font-mono">
+                            8 dígitos numéricos
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          maxLength={8}
+                          value={dniInput}
+                          onChange={(e) => setDniInput(e.target.value.replace(/\D/g, ''))}
+                          disabled={!isOwnProfile || isDniVerified || saving}
+                          placeholder="Ej. 60036463"
+                          className={`w-full rounded-xl px-4 py-3 text-sm font-mono tracking-widest outline-none transition-all ${
+                            isDniVerified
+                              ? 'bg-[#181818] border border-emerald-500/30 text-emerald-300 font-bold cursor-not-allowed'
+                              : isOwnProfile
+                                ? 'bg-[#151515] border border-[#ffffff15] text-white focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]'
+                                : 'bg-[#121212] border border-[#ffffff0a] text-zinc-400 cursor-not-allowed'
+                          }`}
+                        />
+                        {isDniVerified ? (
+                          <Lock className="w-4 h-4 text-emerald-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        ) : (
+                          <CreditCard className="w-4 h-4 text-zinc-600 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-zinc-400">
+                        {isDniVerified
+                          ? 'Tu DNI está certificado oficialmente con tu perfil de estudiante verificado y no puede ser modificado.'
+                          : 'Ingresa tu DNI oficial para que el sistema pueda verificar automáticamente tu identidad al reclamar un perfil institucional.'}
+                      </p>
+                    </div>
+
+                    {/* Email (Solo se muestra a uno mismo) */}
+                    {isOwnProfile && (
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5" /> Correo Asociado
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="email"
+                            value={dbUser?.email || 'Sin correo (Anónimo)'}
+                            disabled
+                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Rol en el Sistema */}
+                    <div className="space-y-2">
+                      <label className={`block text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-1.5 ${
+                        dbUser?.role === 'admin' ? 'text-amber-400' : 'text-zinc-400'
+                      }`}>
+                        <ShieldCheck className={`w-3.5 h-3.5 ${dbUser?.role === 'admin' ? 'text-amber-400' : 'text-zinc-400'}`} /> 
+                        Rol en el Sistema
+                      </label>
+                      <div className="relative">
+                        {dbUser?.role === 'admin' ? (
+                          <div className="w-full bg-[#121212] border border-amber-500/30 text-amber-300 rounded-xl px-4 py-3 text-sm flex items-center justify-between font-bold">
+                            <span className="flex items-center gap-2">
+                              <ShieldCheck className="w-4 h-4 text-amber-400 stroke-[2.5]" />
+                              Administrador
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase font-black">
+                              ADMIN
+                            </span>
+                          </div>
+                        ) : (
+                          <input
+                            type="text"
+                            value={dbUser?.role === 'student' ? 'Estudiante (Estándar)' : (dbUser?.role || 'Estudiante (Estándar)')}
+                            disabled
+                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-400 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Creado el */}
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5" /> Fecha de Registro
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={dbUser?.created_at ? new Date(dbUser.created_at).toLocaleDateString('es-ES', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric'
+                          }) : 'Pendiente'}
+                          disabled
+                          className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Sexo / Género */}
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5" /> Sexo
+                      </label>
+                      {isOwnProfile ? (
+                        <div className="grid grid-cols-2 gap-2 h-[46px]">
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => setSelectedGender(prev => prev === 'male' ? '' : 'male')}
+                            className={`px-3 py-2.5 rounded-xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none ${
+                              selectedGender === 'male'
+                                ? 'bg-blue-950/60 border-blue-500 text-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.3)] ring-1 ring-blue-500/50'
+                                : 'bg-[#121212] border-[#ffffff0f] text-zinc-400 hover:text-white hover:border-blue-500/40'
+                            }`}
+                            title="Seleccionar Hombre ♂"
+                          >
+                            <span className="text-base font-black text-blue-400">♂</span>
+                            <span>Hombre</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => setSelectedGender(prev => prev === 'female' ? '' : 'female')}
+                            className={`px-3 py-2.5 rounded-xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none ${
+                              selectedGender === 'female'
+                                ? 'bg-pink-950/60 border-pink-500 text-pink-300 shadow-[0_0_15px_rgba(236,72,153,0.3)] ring-1 ring-pink-500/50'
+                                : 'bg-[#121212] border-[#ffffff0f] text-zinc-400 hover:text-white hover:border-pink-500/40'
+                            }`}
+                            title="Seleccionar Mujer ♀"
+                          >
+                            <span className="text-base font-black text-pink-400">♀</span>
+                            <span>Mujer</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={
+                              dbUser?.gender === 'male' || dbUser?.gender === 'hombre'
+                                ? '♂ Hombre'
+                                : dbUser?.gender === 'female' || dbUser?.gender === 'mujer'
+                                  ? '♀ Mujer'
+                                  : 'No especificado'
+                            }
+                            disabled
+                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-400 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Fecha de Vinculación con Google (Solo se muestra a uno mismo) */}
+                    {isOwnProfile && dbUser?.linked_google_at && (
+                      <div className="space-y-2 animate-in fade-in duration-300">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-[#eab308]" /> Vinculación con Google
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={new Date(dbUser.linked_google_at).toLocaleDateString('es-ES', {
+                              day: 'numeric',
+                              month: 'long',
+                              year: 'numeric'
+                            })}
+                            disabled
+                            className="w-full bg-[#121212] border border-[#eab308]/20 text-[#eab308] rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium shadow-[0_0_10px_rgba(234,179,8,0.03)]"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ID de Usuario (Solo se muestra a uno mismo) */}
+                    {isOwnProfile && (
+                      <div className="sm:col-span-2 space-y-2">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5" /> ID Único de Usuario (Supabase)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={dbUser?.id || user?.uid || ''}
+                            disabled
+                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-xs outline-none cursor-not-allowed font-mono"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+
+                  {/* Opción de vinculación para usuarios anónimos (Solo para uno mismo) */}
+                  {isOwnProfile && user?.isAnonymous && !dbUser?.linked_google_at && (
+                    <div className="p-5 rounded-2xl bg-[#eab30805] border border-[#eab30820] space-y-4 animate-in fade-in duration-300">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-xl bg-[#eab30810] text-[#eab308] flex-shrink-0">
+                          <Sparkles className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-white uppercase tracking-wider">¿Deseas asegurar tu cuenta?</h4>
+                          <p className="text-xs text-zinc-400 mt-1">
+                            Vincula tu perfil anónimo con una cuenta de Google para no perder tus datos (como tu nombre de usuario, votos y historial de campus) al limpiar el navegador o cambiar de dispositivo.
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-start">
+                        <button
+                          type="button"
+                          disabled={linkingGoogle}
+                          onClick={handleLinkWithGoogleClick}
+                          className="px-5 py-3 rounded-xl border border-[#ffffff15] bg-[#141414] hover:bg-[#1a1a1a] hover:border-[#eab308]/60 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-3 transition-all cursor-pointer shadow-md disabled:opacity-50"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24">
+                            <path fill="#EA4335" d="M5.266 9.765A7.077 7.077 0 0 1 12 4.909c1.69 0 3.218.6 4.418 1.582L19.91 3C17.782 1.145 15.055 0 12 0 7.336 0 3.327 2.682 1.386 6.573L5.266 9.765z" />
+                            <path fill="#4285F4" d="M16.04 15.345c-1.077.737-2.43 1.146-4.04 1.146a7.067 7.067 0 0 1-6.734-4.855L1.386 14.81C3.327 18.72 7.336 21.4 12 21.4c3.136 0 5.927-1.036 7.91-2.827l-3.87-3.228z" />
+                            <path fill="#FBBC05" d="M5.266 12a7.1 7.1 0 0 1 0-2.235L1.386 6.573A11.967 11.967 0 0 0 0 12c0 1.927.455 3.745 1.264 5.373l4.002-3.138A7.01 7.01 0 0 1 5.266 12z" />
+                            <path fill="#34A853" d="M23.49 12.273c0-.818-.082-1.609-.227-2.364H12v4.51h6.445a5.51 5.51 0 0 1-2.39 3.618l3.873 3.227c2.264-2.09 3.564-5.173 3.564-8.99z" />
+                          </svg>
+                          <span>{linkingGoogle ? 'VINCULANDO...' : 'VINCULAR CON GOOGLE'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Botones de acción (Solo si es tu propio perfil) */}
+                  {isOwnProfile && (
+                    <div className="pt-4 border-t border-[#ffffff10] flex items-center justify-between">
+                      <div className="text-[11px] text-zinc-500">
+                        {usernameAvailability.status === 'taken' && (
+                          <span className="text-red-400 font-bold flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5" /> Elige un nombre disponible para guardar
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={
+                          saving || 
+                          !nombresInput.trim() || 
+                          !apellidoPaternoInput.trim()
+                        }
+                        className={`px-6 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all ${
+                          saving || 
+                          !nombresInput.trim() || 
+                          !apellidoPaternoInput.trim()
+                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700/50'
+                            : 'bg-[#eab308] hover:bg-[#d9a307] text-black cursor-pointer shadow-[0_4px_20px_rgba(234,179,8,0.25)] active:scale-98'
+                        }`}
+                      >
+                        {saving ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-current" />
+                            <span>GUARDANDO...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 text-current" />
+                            <span>GUARDAR CAMBIOS</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Botón de Acceso Exclusivo al Panel de Administración */}
+                  {isOwnProfile && dbUser?.role === 'admin' && (
+                    <div className="pt-6 border-t border-amber-500/20">
+                      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col gap-4 shadow-[0_0_25px_rgba(245,158,11,0.08)]">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-amber-400 stroke-[2.5]" />
+                            <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                              Administración del Sistema
+                            </h4>
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase">
+                              ADMIN
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 leading-relaxed">
+                            Accede a las métricas dinámicas de usuarios, estados de autenticación y centros educativos en Supabase.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onNavigate) {
+                              onNavigate('/admin');
+                            } else {
+                              window.history.pushState(null, '', '/admin');
+                              window.dispatchEvent(new PopStateEvent('popstate'));
+                            }
+                          }}
+                          className="w-full px-5 py-3 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-400 text-black font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-[0_4px_20px_rgba(245,158,11,0.35)] hover:shadow-[0_4px_25px_rgba(245,158,11,0.5)] cursor-pointer active:scale-98 flex-shrink-0"
+                        >
+                          <ShieldCheck className="w-4 h-4 text-black stroke-[3]" />
+                          <span>🛡️ PANEL DE CONTROL ADMIN</span>
+                          <ChevronRight className="w-4 h-4 text-black stroke-[3]" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                </form>
+              )}
+            </div>
+          ) : profileTab === 'collections' ? (
+            // PESTAÑA COLECCIONES
+            <div className="space-y-6 animate-in fade-in duration-300">
+              {collectionsError && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{collectionsError}</span>
+                </div>
+              )}
+
+              {/* Crear nueva colección */}
+              {isOwnProfile && (
+                <form onSubmit={handleCreateCollectionInProfile} className="flex gap-2 bg-[#0d0d0d] border border-zinc-800/80 p-3 rounded-xl items-center animate-in fade-in slide-in-from-top-2 duration-300">
+                  <input
+                    type="text"
+                    value={newColInputName}
+                    onChange={(e) => {
+                      setNewColInputName(e.target.value);
+                      setCollectionsError('');
+                    }}
+                    placeholder="Crear nueva colección... (ej. Parciales 2026)"
+                    className="flex-1 bg-transparent text-xs text-white placeholder-zinc-600 outline-none px-2"
+                    maxLength={30}
+                    disabled={creatingColProfile}
+                  />
+                  <button
+                    type="submit"
+                    disabled={creatingColProfile || !newColInputName.trim()}
+                    className="bg-[#eab308] hover:bg-[#eab308]/95 text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer"
+                  >
+                    {creatingColProfile ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    <span>Crear</span>
+                  </button>
+                </form>
+              )}
+
+              {loadingCollections ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#eab308]" />
+                  <p className="text-xs text-zinc-500">Cargando tus colecciones de Supabase...</p>
+                </div>
+              ) : collections.length === 0 ? (
+                <div className="p-8 rounded-2xl border border-dashed border-zinc-800 text-center space-y-3 bg-[#050505]">
+                  <div className="inline-flex p-3 rounded-full bg-[#eab308]/10 border border-[#eab308]/20 text-[#eab308] mb-1">
+                    <Bookmark className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <h4 className="text-sm font-black text-white uppercase tracking-wider">Sin colecciones guardadas</h4>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto leading-relaxed">
+                    Aún no tienes elementos en tus colecciones de la comunidad estudiantil. ¡Explora profesores o centros educativos y añádelos a tus favoritos!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Lista de Carpetas (Colecciones) - HORIZONTAL Y DESLIZABLE */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider">
+                        MIS CARPETAS
+                      </span>
+                      <span className="text-[9px] text-zinc-500 font-bold uppercase">
+                        {collections.length} {collections.length === 1 ? 'carpeta' : 'carpetas'}
+                      </span>
+                    </div>
+
+                    {/* Contenedor horizontal deslizable */}
+                    <div className="flex gap-3 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x -mx-1 px-1">
+                      {collections.map((col) => {
+                        const count = collectionItems.filter(item => item.collection_id === col.id).length;
+                        const isSelected = selectedColId === col.id;
+                        const isDefault = col.name.toLowerCase() === 'guardados';
+
+                        return (
+                          <div
+                            key={col.id}
+                            onClick={() => setSelectedColId(col.id)}
+                            className={`min-w-[150px] sm:min-w-[170px] max-w-[210px] flex-shrink-0 snap-start p-3.5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between relative group ${
+                              isSelected
+                                ? 'bg-[#141414] border-[#eab308] text-white shadow-xl ring-1 ring-[#eab308]/20'
+                                : 'bg-[#0d0d0d] border-zinc-850 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className={`p-2 rounded-xl ${isSelected ? 'bg-[#eab308]/15 text-[#eab308]' : 'bg-[#181818] text-zinc-500'}`}>
+                                <Folder className="w-4 h-4 fill-current" />
+                              </div>
+
+                              {isOwnProfile && !isDefault && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteCollectionInProfile(col.id);
+                                  }}
+                                  className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-950/40 text-zinc-500 hover:text-red-400 transition-all border border-zinc-800 hover:border-red-900/30"
+                                  title="Eliminar Colección"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+
+                            <div>
+                              <p className="text-xs font-black truncate uppercase tracking-tight text-white">{col.name}</p>
+                              <p className="text-[10px] text-zinc-500 font-medium mt-0.5">{count} {count === 1 ? 'elemento' : 'elementos'}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Elementos de la Colección Seleccionada */}
+                  <div className="space-y-3 pt-1 animate-in fade-in duration-300">
+                    <div className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider px-1 flex items-center justify-between">
+                      <span>CONTENIDO DE {collections.find(c => c.id === selectedColId)?.name || 'COLECCIÓN'}</span>
+                      <span className="bg-zinc-850 px-2 py-0.5 rounded text-[9px] text-zinc-400 font-bold uppercase">
+                        {collectionItems.filter(item => item.collection_id === selectedColId).length} Elementos
+                      </span>
+                    </div>
+
+                    {collectionItems.filter(item => item.collection_id === selectedColId).length === 0 ? (
+                      <div className="p-8 rounded-2xl border border-dashed border-zinc-850 bg-[#070707] text-center space-y-2 animate-in fade-in duration-250">
+                        <Bookmark className="w-5 h-5 text-zinc-700 mx-auto" />
+                        <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Carpeta Vacía</p>
+                        <p className="text-[11px] text-zinc-600 max-w-xs mx-auto">
+                          No has guardado ningún profesor o centro en esta lista todavía. ¡Vuelve al campus para agregar elementos!
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2">
+                        {collectionItems
+                          .filter(item => item.collection_id === selectedColId)
+                          .map((item) => {
+                            const isProfessor = item.item_type === 'professor';
+                            return (
+                              <div
+                                key={item.id}
+                                className="flex items-center justify-between p-3.5 rounded-2xl border border-zinc-850/80 bg-[#0c0c0c] hover:bg-[#121212] transition-colors gap-3 animate-in fade-in duration-150"
+                              >
+                                <div
+                                  onClick={() => {
+                                    const path = isProfessor
+                                      ? `/profesores/${item.item_id}`
+                                      : `/educational_centers/${item.item_id}`;
+                                    navigateTo(path);
+                                  }}
+                                  className="flex items-center gap-3 cursor-pointer min-w-0 flex-1 group"
+                                >
+                                  {/* Avatar circle / initials fallback */}
+                                  <div className="w-10 h-10 rounded-xl bg-[#161616] border border-zinc-800 flex items-center justify-center text-zinc-400 font-bold text-sm uppercase flex-shrink-0 group-hover:border-[#eab308]/30 transition-colors">
+                                    {item.item_image ? (
+                                      <img
+                                        src={item.item_image}
+                                        alt={item.item_name}
+                                        className="w-full h-full object-cover rounded-xl"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    ) : (
+                                      item.item_name.substring(0, 1)
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <h4 className="text-xs font-black text-white truncate group-hover:text-[#eab308] transition-colors uppercase tracking-tight">
+                                      {item.item_name}
+                                    </h4>
+                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+                                      {item.item_subtitle || (isProfessor ? 'Profesor' : 'Centro Educativo')}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <button
+                                    onClick={() => {
+                                      const path = isProfessor
+                                        ? `/profesores/${item.item_id}`
+                                        : `/educational_centers/${item.item_id}`;
+                                      navigateTo(path);
+                                    }}
+                                    className="p-2 rounded-xl bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer"
+                                    title="Ver Perfil"
+                                  >
+                                    <ChevronRight className="w-4 h-4" />
+                                  </button>
+
+                                  {isOwnProfile && (
+                                    <button
+                                      onClick={() => handleRemoveItemFromCollectionInProfile(selectedColId!, item.item_id)}
+                                      className="p-2 rounded-xl bg-red-950/10 hover:bg-red-950/40 text-zinc-600 hover:text-red-400 transition-all border border-transparent hover:border-red-900/20 cursor-pointer"
+                                      title="Quitar de la colección"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : profileTab === 'interactions' ? (
+            // PESTAÑA MIS INTERACCIONES
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-pink-500 fill-pink-500/30" /> {isOwnProfile ? 'Mis Votos e Interacciones' : 'Interacciones del Usuario'}
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    {isOwnProfile 
+                      ? 'Administra tus flechazos confidenciales (Crushes), votos de Fan y reconocimientos de la comunidad.'
+                      : 'Interacciones y votos comunitarios registrados por este usuario en Supabase.'}
+                  </p>
+                </div>
+              </div>
+
+              {interactionsError && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{interactionsError}</span>
+                </div>
+              )}
+
+              {/* Subtags / Filtros por Categoría */}
+              {interactions.length > 0 && (
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-full pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setInteractionFilter('crush')}
+                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                      interactionFilter === 'crush'
+                        ? 'bg-pink-500 text-white font-extrabold shadow-[0_0_15px_rgba(236,72,153,0.35)]'
+                        : 'bg-[#121212] text-pink-400 hover:text-pink-300 border border-pink-500/20 hover:bg-pink-950/20'
+                    }`}
+                  >
+                    <Heart className="w-3 h-3 fill-current" />
+                    <span>Crushes ({interactions.filter(i => i.type === 'crush').length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInteractionFilter('fan')}
+                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                      interactionFilter === 'fan'
+                        ? 'bg-amber-500 text-black font-extrabold shadow-[0_0_15px_rgba(245,158,11,0.35)]'
+                        : 'bg-[#121212] text-amber-400 hover:text-amber-300 border border-amber-500/20 hover:bg-amber-950/20'
+                    }`}
+                  >
+                    <Star className="w-3 h-3 fill-current" />
+                    <span>Fans ({interactions.filter(i => i.type === 'fan').length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInteractionFilter('knows')}
+                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                      interactionFilter === 'knows'
+                        ? 'bg-blue-500 text-white font-extrabold shadow-[0_0_15px_rgba(59,130,246,0.35)]'
+                        : 'bg-[#121212] text-blue-400 hover:text-blue-300 border border-blue-500/20 hover:bg-blue-950/20'
+                    }`}
+                  >
+                    <UserCheck className="w-3 h-3" />
+                    <span>Yo te conozco ({interactions.filter(i => i.type === 'knows').length})</span>
+                  </button>
+                </div>
+              )}
+
+              {loadingInteractions ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#eab308]" />
+                  <p className="text-xs text-zinc-500 font-medium">Cargando tus interacciones de Supabase...</p>
+                </div>
+              ) : interactions.length === 0 ? (
+                <div className="p-8 rounded-2xl border border-dashed border-zinc-800 text-center space-y-3 bg-[#050505]">
+                  <div className="inline-flex p-3.5 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 mb-1">
+                    <Heart className="w-7 h-7 fill-pink-500/30 animate-pulse" />
+                  </div>
+                  <h4 className="text-sm font-black text-white uppercase tracking-wider">Sin interacciones registradas</h4>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto leading-relaxed">
+                    Aún no has marcado a ningún profesor como tu Crush o Fan. ¡Visita los perfiles del campus para interactuar y enviar tus flechazos confidenciales!
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onBackToHome}
+                    className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-[11px] uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Explorar Profesores</span>
+                  </button>
+                </div>
+              ) : interactions.filter(i => i.type === interactionFilter).length === 0 ? (
+                <div className="p-8 rounded-2xl border border-dashed border-zinc-800/80 text-center space-y-2 bg-[#080808]">
+                  <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider">
+                    {interactionFilter === 'crush' 
+                      ? 'Sin flechazos (Crushes) registrados' 
+                      : interactionFilter === 'fan'
+                      ? 'Sin votos de Fan registrados'
+                      : 'Sin registros de "Yo te conozco"'}
+                  </p>
+                  <p className="text-[11px] text-zinc-500">
+                    {interactionFilter === 'crush'
+                      ? 'No has enviado ningún flechazo a profesores todavía.'
+                      : interactionFilter === 'fan'
+                      ? 'No has votado como Fan de ningún profesor todavía.'
+                      : 'No has marcado a ningún profesor con "Yo te conozco" todavía.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {interactions
+                    .filter(item => item.type === interactionFilter)
+                    .map((item) => {
+                      const isCrush = item.type === 'crush';
+                      const isFan = item.type === 'fan';
+                      const isKnows = item.type === 'knows';
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="group relative flex flex-col justify-between p-4 rounded-2xl border border-zinc-800/80 bg-[#0c0c0c] hover:bg-[#121212] hover:border-zinc-700 transition-all duration-200 shadow-md"
+                        >
+                          <div className="flex items-start gap-3.5">
+                            {/* Avatar */}
+                            <div 
+                              onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                              className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm uppercase flex-shrink-0 cursor-pointer overflow-hidden transition-all ${
+                                isCrush 
+                                  ? 'bg-pink-950/30 border border-pink-500/40 text-pink-400 group-hover:border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.15)]' 
+                                  : isFan
+                                  ? 'bg-amber-950/30 border border-amber-500/40 text-amber-400 group-hover:border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
+                                  : 'bg-blue-950/30 border border-blue-500/40 text-blue-400 group-hover:border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.15)]'
+                              }`}
+                            >
+                              {item.professorAvatar ? (
+                                <img
+                                  src={item.professorAvatar}
+                                  alt={item.professorName}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                item.professorName.charAt(0)
+                              )}
+                            </div>
+
+                            {/* Nombre y Cargo */}
+                            <div 
+                              onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                              className="min-w-0 flex-1 cursor-pointer"
+                            >
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {isCrush && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
+                                    <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
+                                    CRUSH
+                                  </span>
+                                )}
+                                {isFan && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
+                                    <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                    FAN
+                                  </span>
+                                )}
+                                {isKnows && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black uppercase tracking-wider">
+                                    <UserCheck className="w-2.5 h-2.5 text-blue-400" />
+                                    YO TE CONOZCO
+                                  </span>
+                                )}
+                              </div>
+
+                              <h4 className="text-xs sm:text-sm font-black text-white truncate group-hover:text-[#eab308] transition-colors uppercase tracking-tight mt-1.5">
+                                {item.professorName}
+                              </h4>
+                              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+                                {item.professorRole || 'Profesor'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Footer con Acciones */}
+                          <div className="flex items-center justify-between pt-3 mt-3 border-t border-zinc-800/60">
+                            <button
+                              type="button"
+                              onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                              className="inline-flex items-center gap-1 text-[11px] font-black text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                            >
+                              <span>Ver Perfil</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveInteraction(item);
+                                }}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer border ${
+                                  isCrush
+                                    ? 'bg-rose-950/20 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-300 border-rose-900/30 hover:border-rose-700/50'
+                                    : 'bg-red-950/20 hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border-red-900/30 hover:border-red-700/50'
+                                }`}
+                                title={isCrush ? 'Retirar flechazo' : 'Quitar voto de interacción'}
+                              >
+                                {isCrush ? (
+                                  <HeartCrack className="w-3 h-3 text-pink-400" />
+                                ) : (
+                                  <Trash2 className="w-3 h-3 text-red-400" />
+                                )}
+                                <span>Quitar</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          ) : (
+            // PESTAÑA SUSCRIPCIONES A NOTIFICACIONES
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                    <BellRing className="w-5 h-5 text-[#eab308]" /> {isOwnProfile ? 'Mis Suscripciones a Notificaciones' : 'Suscripciones del Usuario'}
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    {isOwnProfile 
+                      ? 'Administra las alertas y avisos en tiempo real sobre los perfiles de profesores y estudiantes que sigues.'
+                      : 'Perfiles educativos suscritos para notificaciones automáticas.'}
+                  </p>
+                </div>
+              </div>
+
+              {subscriptionsError && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{subscriptionsError}</span>
+                </div>
+              )}
+
+              {/* Subtags / Filtro entre Profesores y Estudiantes */}
+              <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionsSubTab('professors')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                    subscriptionsSubTab === 'professors'
+                      ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)] font-extrabold'
+                      : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818]'
+                  }`}
+                >
+                  <GraduationCap className="w-4 h-4" />
+                  <span>Profesores</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                    subscriptionsSubTab === 'professors' ? 'bg-black/20 text-black font-black' : 'bg-zinc-800 text-zinc-400'
+                  }`}>
+                    {profSubscriptions.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionsSubTab('students')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                    subscriptionsSubTab === 'students'
+                      ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.3)] font-extrabold'
+                      : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818]'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Estudiantes</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                    subscriptionsSubTab === 'students' ? 'bg-black/20 text-white font-black' : 'bg-zinc-800 text-zinc-400'
+                  }`}>
+                    {studentSubscriptions.length}
+                  </span>
+                </button>
+              </div>
+
+              {loadingSubscriptions ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <Loader2 className="w-8 h-8 text-[#eab308] animate-spin" />
+                  <p className="text-xs text-zinc-400 font-mono">Sincronizando suscripciones con la base de datos...</p>
+                </div>
+              ) : subscriptionsSubTab === 'professors' ? (
+                // LISTA DE PROFESORES SUSCRITOS
+                profSubscriptions.length === 0 ? (
+                  <div className="text-center py-16 px-4 bg-[#0a0a0a] rounded-2xl border border-zinc-900 space-y-3">
+                    <BellOff className="w-10 h-10 text-zinc-600 mx-auto stroke-1" />
+                    <h4 className="text-sm font-black text-zinc-300 uppercase tracking-wide">
+                      Sin suscripciones a profesores
+                    </h4>
+                    <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                      {isOwnProfile 
+                        ? 'Aún no estás suscrito a ningún profesor. Entra al perfil de tu profesor preferido y haz clic en la campanita para activar notificaciones de flechazos, fans y calificaciones.'
+                        : 'Este usuario no tiene suscripciones a profesores.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {profSubscriptions.map((item) => (
+                      <div
+                        key={item.id}
+                        className="group relative flex flex-col justify-between p-4 rounded-2xl border border-zinc-800/80 bg-[#0c0c0c] hover:bg-[#121212] hover:border-amber-500/40 transition-all duration-200 shadow-md"
+                      >
+                        <div className="flex items-start gap-3.5">
+                          {/* Avatar */}
+                          <div 
+                            onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                            className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm uppercase flex-shrink-0 cursor-pointer overflow-hidden bg-amber-950/30 border border-amber-500/40 text-[#eab308] group-hover:border-[#eab308] shadow-[0_0_15px_rgba(234,179,8,0.15)]"
+                          >
+                            {item.professorAvatar ? (
+                              <img
+                                src={item.professorAvatar}
+                                alt={item.professorName}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              item.professorName.charAt(0)
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div 
+                            onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                            className="min-w-0 flex-1 cursor-pointer"
+                          >
+                            <h4 className="text-xs sm:text-sm font-black text-white truncate group-hover:text-[#eab308] transition-colors uppercase tracking-tight">
+                              {item.professorName}
+                            </h4>
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+                              {item.professorRole || 'Profesor'}
+                            </p>
+
+                            {/* Tags de Notificaciones Activas */}
+                            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                              {item.notify_crush && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
+                                  Crush
+                                </span>
+                              )}
+                              {item.notify_review && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                  Reseñas
+                                </span>
+                              )}
+                              {item.notify_known && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black uppercase tracking-wider">
+                                  <UserCheck className="w-2.5 h-2.5 text-blue-400" />
+                                  Conocido
+                                </span>
+                              )}
+                              {item.notify_fan && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                                  Fans
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer con Acciones */}
+                        <div className="flex items-center justify-between pt-3 mt-3 border-t border-zinc-800/60">
+                          <button
+                            type="button"
+                            onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                            className="inline-flex items-center gap-1 text-[11px] font-black text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                          >
+                            <span>Ver Perfil</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingProfSub(item);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-[#eab308] border border-zinc-800"
+                                title="Configurar alertas"
+                              >
+                                <Settings2 className="w-3 h-3" />
+                                <span>Ajustar</span>
+                              </button>
+                            )}
+
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveProfSubscription(item);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer bg-red-950/20 hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border border-red-900/30 hover:border-red-700/50"
+                                title="Cancelar suscripción"
+                              >
+                                <Trash2 className="w-3 h-3 text-red-400" />
+                                <span>Quitar</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                // LISTA DE ESTUDIANTES SUSCRITOS
+                studentSubscriptions.length === 0 ? (
+                  <div className="text-center py-16 px-4 bg-[#0a0a0a] rounded-2xl border border-zinc-900 space-y-3">
+                    <BellOff className="w-10 h-10 text-zinc-600 mx-auto stroke-1" />
+                    <h4 className="text-sm font-black text-zinc-300 uppercase tracking-wide">
+                      Sin suscripciones a estudiantes
+                    </h4>
+                    <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                      {isOwnProfile 
+                        ? 'Aún no estás suscrito a ningún estudiante. Entra al perfil de un alumno y activa la campana para recibir alertas inmediatas de flechazos y mensajes.'
+                        : 'Este usuario no tiene suscripciones a estudiantes.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {studentSubscriptions.map((item) => (
+                      <div
+                        key={item.id}
+                        className="group relative flex flex-col justify-between p-4 rounded-2xl border border-zinc-800/80 bg-[#0c0c0c] hover:bg-[#121212] hover:border-pink-500/40 transition-all duration-200 shadow-md"
+                      >
+                        <div className="flex items-start gap-3.5">
+                          {/* Avatar */}
+                          <div 
+                            onClick={() => navigateTo(`/estudiantes/${item.studentId}`)}
+                            className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm uppercase flex-shrink-0 cursor-pointer overflow-hidden bg-pink-950/30 border border-pink-500/40 text-pink-400 group-hover:border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.15)]"
+                          >
+                            {item.studentAvatar ? (
+                              <img
+                                src={item.studentAvatar}
+                                alt={item.studentName}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              item.studentName.charAt(0)
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div 
+                            onClick={() => navigateTo(`/estudiantes/${item.studentId}`)}
+                            className="min-w-0 flex-1 cursor-pointer"
+                          >
+                            <h4 className="text-xs sm:text-sm font-black text-white truncate group-hover:text-pink-400 transition-colors uppercase tracking-tight">
+                              {item.studentName}
+                            </h4>
+                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+                              {item.studentGrade || item.studentCareer || 'Estudiante'}
+                            </p>
+
+                            {/* Tags de Notificaciones Activas */}
+                            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                              {item.notify_crush && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
+                                  Crush
+                                </span>
+                              )}
+                              {item.notify_love_message && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Mail className="w-2.5 h-2.5 text-rose-400" />
+                                  Mensajes
+                                </span>
+                              )}
+                              {item.notify_known && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black uppercase tracking-wider">
+                                  <UserCheck className="w-2.5 h-2.5 text-blue-400" />
+                                  Conocido
+                                </span>
+                              )}
+                              {item.notify_fan && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
+                                  <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                  Fans
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer con Acciones */}
+                        <div className="flex items-center justify-between pt-3 mt-3 border-t border-zinc-800/60">
+                          <button
+                            type="button"
+                            onClick={() => navigateTo(`/estudiantes/${item.studentId}`)}
+                            className="inline-flex items-center gap-1 text-[11px] font-black text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                          >
+                            <span>Ver Perfil</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingStudentSub(item);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-pink-400 border border-zinc-800"
+                                title="Configurar alertas"
+                              >
+                                <Settings2 className="w-3 h-3" />
+                                <span>Ajustar</span>
+                              </button>
+                            )}
+
+                            {isOwnProfile && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveStudentSubscription(item);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer bg-red-950/20 hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border border-red-900/30 hover:border-red-700/50"
+                                title="Cancelar suscripción"
+                              >
+                                <Trash2 className="w-3 h-3 text-red-400" />
+                                <span>Quitar</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+        </div>
+
+      </div>
+
+
+
+      {/* Modal para configurar notificaciones de profesor desde el perfil */}
+      {editingProfSub && user && (
+        <ProfessorNotificationModal
+          isOpen={true}
+          onClose={() => setEditingProfSub(null)}
+          professorId={editingProfSub.professorId}
+          professorName={editingProfSub.professorName}
+          professorAvatar={editingProfSub.professorAvatar || null}
+          userUid={user.uid}
+          onSubscriptionChange={() => {
+            loadSubscriptions();
+          }}
+        />
+      )}
+
+      {/* Modal para configurar notificaciones de estudiante desde el perfil */}
+      {editingStudentSub && user && (
+        <StudentNotificationModal
+          isOpen={true}
+          onClose={() => setEditingStudentSub(null)}
+          studentId={editingStudentSub.studentId}
+          studentName={editingStudentSub.studentName}
+          studentAvatar={editingStudentSub.studentAvatar || null}
+          userUid={user.uid}
+          onSubscriptionChange={() => {
+            loadSubscriptions();
+          }}
+        />
+      )}
+
+      {/* Modal para cambiar foto de perfil con recorte y compresión */}
+      {user && isAvatarModalOpen && (
+        <AvatarUploadModal
+          isOpen={isAvatarModalOpen}
+          onClose={() => setIsAvatarModalOpen(false)}
+          userId={user.uid}
+          currentPhotoUrl={dbUser?.photo_url || null}
+          onAvatarUpdated={(newPhotoUrl) => {
+            setDbUser((prev) => (prev ? { ...prev, photo_url: newPhotoUrl } : null));
+            setSuccessMsg('¡Foto de perfil actualizada con éxito!');
+          }}
+        />
+      )}
+
+      {/* Modal para ver la foto de perfil en tamaño completo */}
+      {isViewPhotoModalOpen && dbUser?.photo_url && (
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setIsViewPhotoModalOpen(false)}
+        >
+          <div
+            className="relative max-w-md w-full bg-[#0d0d0d] border border-zinc-800 rounded-3xl p-5 shadow-2xl flex flex-col items-center space-y-4 animate-in zoom-in-95 duration-200 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Encabezado del visor */}
+            <div className="w-full flex items-center justify-between pb-3 border-b border-zinc-800/80">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-white uppercase tracking-tight truncate max-w-[200px]">
+                  {dbUser.display_name || 'Foto de Perfil'}
+                </span>
+                {dbUser.role === 'admin' && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
+                    Admin
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsViewPhotoModalOpen(false)}
+                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+                title="Cerrar visor"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Imagen ampliada */}
+            <div className="relative rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl max-h-[60vh] w-full flex items-center justify-center bg-black/60 p-2">
+              <img
+                src={dbUser.photo_url}
+                alt={dbUser.display_name || 'Foto de perfil'}
+                className="max-h-[55vh] w-auto max-w-full object-contain rounded-xl shadow-lg ring-1 ring-white/10"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+
+            {/* Acciones del visor */}
+            <div className="w-full flex items-center justify-between pt-1">
+              <a
+                href={dbUser.photo_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-bold text-zinc-400 hover:text-amber-400 transition flex items-center gap-1.5 cursor-pointer py-1.5 px-2 rounded-lg hover:bg-zinc-900"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Abrir en pestaña</span>
+              </a>
+
+              {isOwnProfile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsViewPhotoModalOpen(false);
+                    setIsAvatarModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 hover:border-[#eab308] text-xs font-bold text-white transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                >
+                  <Camera className="w-3.5 h-3.5 text-[#eab308]" />
+                  <span>Cambiar foto</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
