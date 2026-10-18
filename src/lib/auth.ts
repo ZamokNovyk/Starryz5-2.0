@@ -103,13 +103,14 @@ export async function refreshAuthUser(): Promise<AuthUser | null> {
       const isKnownAdmin = dbUser.role === 'admin' || dbUser.email === 'wikistars12@gmail.com' || dbUser.email === 'wikibot3@gmail.com';
       const userRole = isKnownAdmin ? 'admin' : (dbUser.role || current.role || null);
       const isClaimedUser = Boolean(dbUser.profile_appeal || dbUser.is_verified_student || dbUser.claimed_student_id);
+      const officialName = dbUser.nombre_completo || `${dbUser.nombres || dbUser.nombre || ''} ${dbUser.apellido_paterno || ''} ${dbUser.apellido_materno || ''}`.trim() || dbUser.display_name;
       const updated: AuthUser = {
         ...current,
         uid: dbUser.id || current.uid,
-        displayName: dbUser.nombre_completo || dbUser.display_name || current.displayName,
+        displayName: isClaimedUser && officialName ? officialName : (dbUser.nombre_completo || dbUser.display_name || current.displayName),
         photoURL: dbUser.photo_url || current.photoURL,
         role: userRole,
-        institute_id: isClaimedUser ? (dbUser.institute_id || current.institute_id || null) : null,
+        institute_id: isClaimedUser ? (dbUser.institute_id || '9029cbec-ead6-48ae-aace-3c348b0dc325') : null,
         dni: dbUser.dni || current.dni || null,
         claimed_student_id: dbUser.claimed_student_id || current.claimed_student_id || null,
         is_verified_student: isClaimedUser,
@@ -183,25 +184,26 @@ export async function syncUserWithSupabase(user: AuthUser): Promise<any> {
       if (existing) {
         // Asignar el id UUID real de la base de datos y campos de estudiante
         const isClaimed = Boolean(existing.profile_appeal || existing.is_verified_student || existing.claimed_student_id);
+        const officialName = existing.nombre_completo || `${existing.nombres || existing.nombre || ''} ${existing.apellido_paterno || ''} ${existing.apellido_materno || ''}`.trim() || existing.display_name;
+
         user.uid = existing.id;
-        user.institute_id = isClaimed ? (existing.institute_id || null) : null;
+        user.institute_id = isClaimed ? (existing.institute_id || '9029cbec-ead6-48ae-aace-3c348b0dc325') : null;
         user.dni = existing.dni || null;
         user.claimed_student_id = existing.claimed_student_id || null;
         user.is_verified_student = isClaimed;
         user.profile_appeal = isClaimed;
 
-        // Si ya tiene un perfil de estudiante reclamado, no sobreescribir su nombre oficial
-        const officialName = existing.nombre_completo || existing.display_name;
-        if (existing.claimed_student_id && officialName) {
+        // Si ya tiene un perfil de estudiante reclamado, heredar siempre el nombre y apellidos oficiales del perfil que reclamó
+        if (isClaimed && officialName) {
           user.displayName = officialName;
         }
 
-        // Actualizar foto si cambió
+        // Actualizar foto o nombre oficial si cambió
         try {
           await supabase
             .from('users')
             .update({
-              display_name: existing.claimed_student_id ? officialName : (user.displayName || officialName || 'Usuario'),
+              display_name: isClaimed && officialName ? officialName : (user.displayName || officialName || 'Usuario'),
               photo_url: user.photoURL || existing.photo_url,
             })
             .eq('id', existing.id);
@@ -345,15 +347,16 @@ export async function loginWithGoogle(): Promise<AuthUser> {
             const isKnownAdmin = existingDbUser?.role === 'admin' || email === 'wikistars12@gmail.com' || email === 'wikibot3@gmail.com';
             const userRole = isKnownAdmin ? 'admin' : (existingDbUser?.role || null);
             const isClaimedUser = Boolean(existingDbUser?.profile_appeal || existingDbUser?.claimed_student_id || existingDbUser?.is_verified_student);
+            const officialName = existingDbUser?.nombre_completo || `${existingDbUser?.nombres || existingDbUser?.nombre || ''} ${existingDbUser?.apellido_paterno || ''} ${existingDbUser?.apellido_materno || ''}`.trim() || existingDbUser?.display_name;
 
             const authUser: AuthUser = {
               uid: resolvedUserId,
-              displayName: existingDbUser?.nombre_completo || existingDbUser?.display_name || displayName,
+              displayName: isClaimedUser && officialName ? officialName : (existingDbUser?.nombre_completo || existingDbUser?.display_name || displayName),
               email,
               photoURL: existingDbUser?.photo_url || photoURL,
               isAnonymous: false,
               role: userRole,
-              institute_id: isClaimedUser ? (existingDbUser?.institute_id || null) : null,
+              institute_id: isClaimedUser ? (existingDbUser?.institute_id || '9029cbec-ead6-48ae-aace-3c348b0dc325') : null,
               dni: existingDbUser?.dni || null,
               claimed_student_id: existingDbUser?.claimed_student_id || null,
               is_verified_student: isClaimedUser,

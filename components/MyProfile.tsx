@@ -404,22 +404,52 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               window.history.replaceState(null, '', `/perfil/${data.id}`);
             } catch (e) {}
           }
-          // Si el usuario reclamó un perfil de estudiante, sincronizar su nombre oficial real
+          const isClaimedUser = Boolean(
+            (data as any)?.profile_appeal ||
+            (data as any)?.claimed_student_id ||
+            (data as any)?.is_verified_student
+          );
+
+          // Si el usuario reclamó un perfil de estudiante, heredar siempre su nombre y apellidos oficiales
           try {
-            const claimedRaw = localStorage.getItem(`user_claimed_profile_${targetUid}`);
+            const rawKey = `user_claimed_profile_${targetUid}`;
+            const altKey = user?.uid ? `user_claimed_profile_${user.uid}` : null;
+            const claimedRaw = localStorage.getItem(rawKey) || (altKey ? localStorage.getItem(altKey) : null);
             if (claimedRaw) {
               const claimedParsed = JSON.parse(claimedRaw);
               if (claimedParsed.studentName) {
                 data.display_name = claimedParsed.studentName;
               }
+              if (claimedParsed.nombres) {
+                (data as any).nombres = claimedParsed.nombres;
+              }
+              if (claimedParsed.apellidoPaterno) {
+                (data as any).apellido_paterno = claimedParsed.apellidoPaterno;
+              }
+              if (claimedParsed.apellidoMaterno) {
+                (data as any).apellido_materno = claimedParsed.apellidoMaterno;
+              }
             }
           } catch (e) {}
+
+          const nombresVal = (data as any).nombres || (data as any).nombre || '';
+          const patVal = (data as any).apellido_paterno || '';
+          const matVal = (data as any).apellido_materno || '';
+          const combinedOfficial = `${nombresVal} ${patVal} ${matVal}`.trim();
+          const finalOfficialName = isClaimedUser
+            ? ((data as any).nombre_completo || combinedOfficial || data.display_name || '')
+            : (combinedOfficial || data.display_name || data.username || '');
+
+          if (isClaimedUser) {
+            data.display_name = finalOfficialName;
+            data.institute_id = '9029cbec-ead6-48ae-aace-3c348b0dc325';
+          }
 
           setDbUser(data as SupabaseUser);
 
           const dniVal = (data as any)?.dni || '';
           setDniInput(dniVal);
-          setIsDniVerified(Boolean((data as any)?.is_verified_student || (data as any)?.claimed_student_id));
+          setIsDniVerified(isClaimedUser);
 
           if (typeof (data as any)?.fans_count === 'number') {
             setFanCount(prev => Math.max(prev, (data as any).fans_count));
@@ -431,25 +461,19 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             setCrushesCount(prev => Math.max(prev, (data as any).crushes_count));
           }
           
-          const nombresVal = (data as any).nombres || '';
-          const patVal = (data as any).apellido_paterno || '';
-          const matVal = (data as any).apellido_materno || '';
-
           if (nombresVal || patVal) {
             setNombresInput(nombresVal);
             setApellidoPaternoInput(patVal);
             setApellidoMaternoInput(matVal);
-            const combined = `${nombresVal} ${patVal} ${matVal}`.trim();
-            setDisplayNameInput(combined || data.display_name || '');
-            setInitialDisplayName(combined || data.display_name || '');
+            setDisplayNameInput(finalOfficialName);
+            setInitialDisplayName(finalOfficialName);
           } else {
-            const name = data.display_name || data.username || '';
-            const parsed = parseFullName(name);
+            const parsed = parseFullName(finalOfficialName);
             setNombresInput(parsed.nombres);
             setApellidoPaternoInput(parsed.apellidoPaterno);
             setApellidoMaternoInput(parsed.apellidoMaterno);
-            setDisplayNameInput(name);
-            setInitialDisplayName(name);
+            setDisplayNameInput(finalOfficialName);
+            setInitialDisplayName(finalOfficialName);
           }
 
           let loadedGender: 'male' | 'female' | '' = '';

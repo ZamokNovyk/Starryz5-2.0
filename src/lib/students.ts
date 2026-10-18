@@ -450,7 +450,17 @@ export async function claimStudentProfile(
     throw new Error(`El número de DNI registrado en tu perfil (${cleanDni}) no coincide con el DNI oficial de este estudiante (${student.nombre_completo || student.nombre}). No puedes reclamar este perfil.`);
   }
 
-  const officialName = student.nombre_completo || `${student.nombre} ${student.apellidos}`.trim();
+  // Extraer nombres y apellidos oficiales directamente del estudiante reclamado
+  const nombresVal = (student.nombres || student.nombre || '').trim();
+  const apPaterno = (student.apellido_paterno || '').trim();
+  const apMaterno = (student.apellido_materno || '').trim();
+  const apellidosVal = (student.apellidos || `${apPaterno} ${apMaterno}`).trim();
+  const officialName = (
+    student.nombre_completo ||
+    `${nombresVal} ${apellidosVal}`.trim() ||
+    `${nombresVal} ${apPaterno} ${apMaterno}`.trim() ||
+    'Estudiante'
+  ).trim();
   const now = new Date().toISOString();
   const fixedInstituteId = '9029cbec-ead6-48ae-aace-3c348b0dc325';
 
@@ -495,12 +505,7 @@ export async function claimStudentProfile(
     const actualRatings = Math.max(student.total_ratings || 0, tableRatings);
     const actualScore = tableScore > 0 ? tableScore : (student.score || 0.0);
 
-    // D. Fusionar todos los datos oficiales en la tabla 'users'
-    const nombresVal = student.nombres || student.nombre || '';
-    const apellidosVal = student.apellidos || `${student.apellido_paterno || ''} ${student.apellido_materno || ''}`.trim() || '';
-    const apPaterno = student.apellido_paterno || (apellidosVal ? apellidosVal.split(' ')[0] : '');
-    const apMaterno = student.apellido_materno || (apellidosVal ? apellidosVal.split(' ').slice(1).join(' ') : '');
-
+    // D. Heredar el nombre y apellidos oficiales en la tabla 'users' y asignar institute_id fijo
     const userUpdatePayload: any = {
       display_name: officialName,
       nombre_completo: officialName,
@@ -512,7 +517,7 @@ export async function claimStudentProfile(
       claimed_student_id: student.id,
       is_verified_student: true,
       profile_appeal: true,
-      institute_id: fixedInstituteId, // Solo al reclamar perfil se le asigna el ID fijo del instituto
+      institute_id: fixedInstituteId, // '9029cbec-ead6-48ae-aace-3c348b0dc325'
       dni: cleanDni,
       fans_count: actualFans,
       knows_count: actualKnows,
@@ -525,8 +530,9 @@ export async function claimStudentProfile(
 
     const runUserUpdate = async (payload: any) => {
       let err: any = null;
-      if (targetUserUuid && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetUserUuid)) {
-        const res = await supabase.from('users').update(payload).eq('id', targetUserUuid);
+      const targetId = targetUserUuid || user.uid;
+      if (targetId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)) {
+        const res = await supabase.from('users').update(payload).eq('id', targetId);
         if (res.error) err = res.error;
       }
       if (user.email) {
@@ -558,12 +564,18 @@ export async function claimStudentProfile(
         uid: user.uid,
         at: now,
         name: officialName,
+        nombres: nombresVal,
+        apellido_paterno: apPaterno,
+        apellido_materno: apMaterno,
         institute_id: fixedInstituteId,
         profile_appeal: true,
       }));
       localStorage.setItem(`user_claimed_profile_${user.uid}`, JSON.stringify({
         studentId: student.id,
         studentName: officialName,
+        nombres: nombresVal,
+        apellidoPaterno: apPaterno,
+        apellidoMaterno: apMaterno,
         dni: cleanDni,
         claimedAt: now,
         institute_id: fixedInstituteId,
