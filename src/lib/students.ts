@@ -485,10 +485,17 @@ export async function claimStudentProfile(
     ]);
 
     // C. Calcular métricas reales directamente desde las tablas
+    const isStudentUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(student.id);
     const [actitudRes, crushesRes, reviewsRes] = await Promise.all([
-      supabase.from('users_actitud').select('attitude_type').or(`target_user_id.eq.${userUuidToAssign},target_user_id.eq.${student.id}`),
-      supabase.from('users_crushes').select('id').or(`target_user_id.eq.${userUuidToAssign},target_user_id.eq.${student.id}`),
-      supabase.from('user_reseñas').select('stars').or(`target_user_id.eq.${userUuidToAssign},target_user_id.eq.${student.id}`),
+      isStudentUuid
+        ? supabase.from('users_actitud').select('attitude_type').or(`target_user_id.eq.${userUuidToAssign},target_user_id.eq.${student.id}`)
+        : supabase.from('users_actitud').select('attitude_type').eq('target_user_id', userUuidToAssign),
+      isStudentUuid
+        ? supabase.from('users_crushes').select('id').or(`target_user_id.eq.${userUuidToAssign},target_user_id.eq.${student.id}`)
+        : supabase.from('users_crushes').select('id').eq('target_user_id', userUuidToAssign),
+      isStudentUuid
+        ? supabase.from('user_reseñas').select('stars').or(`target_user_id.eq.${userUuidToAssign},target_user_id.eq.${student.id}`)
+        : supabase.from('user_reseñas').select('stars').eq('target_user_id', userUuidToAssign),
     ]);
 
     const tableFans = actitudRes.data ? actitudRes.data.filter((a: any) => a.attitude_type === 'fans' || a.attitude_type === 'fan').length : 0;
@@ -1245,64 +1252,216 @@ export async function getTodayStudentVotes(studentId: string, userUid: string): 
  * Intenta leer primero directamente de las columnas cacheadas stars_1..stars_5 en 'students'.
  * Si son 0 o aún no se han calculado, consulta 'user_reseñas'.
  */
-export async function getStudentRatingBreakdown(studentId: string): Promise<{ [key: number]: number }> {
+export interface StudentReviewItem {
+  id: string;
+  voter_uid: string;
+  target_user_id: string;
+  stars: number;
+  created_at: string;
+  voter_name?: string;
+  voter_avatar?: string;
+}
+
+export async function getStudentReviewsList(
+  studentId: string, 
+  candidateIds?: string[]
+): Promise<StudentReviewItem[]> {
+  try {
+    const rawIds = Array.from(new Set([studentId, ...(candidateIds || [])].filter(Boolean) as string[]));
+    if (rawIds.length === 0) return [];
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuids = rawIds.filter(id => UUID_REGEX.test(id));
+    const nonUuids = rawIds.filter(id => !UUID_REGEX.test(id));
+
+    const allData: any[] = [];
+
+    // 1. Consultar por UUIDs válidos (evita error 22P02 si target_user_id es tipo UUID en Postgres)
+    if (uuids.length > 0) {
+      try {
+        let q = supabase
+          .from('user_reseñas')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (uuids.length === 1) {
+          q = q.eq('target_user_id', uuids[0]);
+        } else {
+          q = q.in('target_user_id', uuids);
+        }
+        const { data, error } = await q;
+        if (!error && data) {
+          allData.push(...data);
+        }
+      } catch (e) {}
+    }
+
+    // 2. Consultar por IDs no-UUID (slugs, nombres, etc.) por si target_user_id es tipo TEXT
+    if (nonUuids.length > 0) {
+      try {
+        let q = supabase
+          .from('user_reseñas')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (nonUuids.length === 1) {
+          q = q.eq('target_user_id', nonUuids[0]);
+        } else {
+          q = q.in('target_user_id', nonUuids);
+        }
+        const { data, error } = await q;
+        if (!error && data) {
+          allData.push(...data);
+        }
+      } catch (e) {}
+    }
+
+    if (allData.length === 0) return [];
+
+    // Deduplicar por id de reseña
+    const seen = new Set<string>();
+    const data = allData.filter(r => {
+      if (!r || !r.id || seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+
+    data.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+    const voterUids = Array.from(new Set(data.map((r: any) => r.voter_uid).filter(Boolean)));
+    const voterMap = new Map<string, { name: string; avatar: string }>();
+
+    if (voterUids.length > 0) {
+      try {
+        const voterUuids = voterUids.filter(id => UUID_REGEX.test(id));
+        const voterNonUuids = voterUids.filter(id => !UUID_REGEX.test(id));
+        const votersList: any[] = [];
+
+        if (voterUuids.length > 0) {
+          const { data: vData } = await supabase
+            .from('users')
+            .select('id, display_name, photo_url, nombres, apellido_paterno')
+            .in('id', voterUuids);
+          if (vData) votersList.push(...vData);
+        }
+
+        if (voterNonUuids.length > 0) {
+          try {
+            const { data: vData2 } = await supabase
+              .from('users')
+              .select('id, display_name, photo_url, nombres, apellido_paterno')
+              .in('id', voterNonUuids);
+            if (vData2) votersList.push(...vData2);
+          } catch (e) {}
+        }
+
+        votersList.forEach((v: any) => {
+          const vName = v.display_name || `${v.nombres || ''} ${v.apellido_paterno || ''}`.trim() || 'Usuario';
+          voterMap.set(v.id, { name: vName, avatar: v.photo_url || '' });
+        });
+      } catch (e) {}
+    }
+
+    return data.map((r: any) => {
+      const vInfo = voterMap.get(r.voter_uid);
+      return {
+        id: r.id,
+        voter_uid: r.voter_uid,
+        target_user_id: r.target_user_id,
+        stars: Number(r.stars) || 5,
+        created_at: r.created_at,
+        voter_name: vInfo?.name || 'Miembro de la comunidad',
+        voter_avatar: vInfo?.avatar || '',
+      };
+    });
+  } catch (err) {
+    return [];
+  }
+}
+
+/**
+ * Obtiene la distribución de calificaciones (conteo de estrellas 1 a 5) de un estudiante o usuario.
+ * Consulta primero la tabla 'user_reseñas' por todos los IDs candidatos para reflejar
+ * de inmediato las calificaciones del usuario (UUID) o del estudiante.
+ */
+export async function getStudentRatingBreakdown(
+  studentId: string,
+  candidateIds?: string[]
+): Promise<{ [key: number]: number }> {
   const breakdown: { [key: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   
   try {
-    // 1. Intentar consultar directamente las columnas de estrellas en la tabla 'students'
-    const { data: studentData } = await supabase
-      .from('students')
-      .select('stars_1, stars_2, stars_3, stars_4, stars_5')
-      .eq('id', studentId)
-      .maybeSingle();
+    const rawIds = Array.from(new Set([studentId, ...(candidateIds || [])].filter(Boolean) as string[]));
+    if (rawIds.length === 0) return breakdown;
 
-    if (
-      studentData &&
-      (typeof studentData.stars_1 === 'number' ||
-       typeof studentData.stars_2 === 'number' ||
-       typeof studentData.stars_3 === 'number' ||
-       typeof studentData.stars_4 === 'number' ||
-       typeof studentData.stars_5 === 'number')
-    ) {
-      const s1 = Number(studentData.stars_1) || 0;
-      const s2 = Number(studentData.stars_2) || 0;
-      const s3 = Number(studentData.stars_3) || 0;
-      const s4 = Number(studentData.stars_4) || 0;
-      const s5 = Number(studentData.stars_5) || 0;
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuids = rawIds.filter(id => UUID_REGEX.test(id));
+    const nonUuids = rawIds.filter(id => !UUID_REGEX.test(id));
 
-      // Si existe al menos una estrella registrada en las columnas cacheadas, devolver de inmediato
-      if (s1 > 0 || s2 > 0 || s3 > 0 || s4 > 0 || s5 > 0) {
-        return { 1: s1, 2: s2, 3: s3, 4: s4, 5: s5 };
-      }
+    const votesList: any[] = [];
+
+    // 1. Consultar UUIDs válidos (100% seguro contra error 22P02 de PostgreSQL)
+    if (uuids.length > 0) {
+      try {
+        let q = supabase.from('user_reseñas').select('stars');
+        if (uuids.length === 1) {
+          q = q.eq('target_user_id', uuids[0]);
+        } else {
+          q = q.in('target_user_id', uuids);
+        }
+        const { data, error } = await q;
+        if (!error && data) {
+          votesList.push(...data);
+        }
+      } catch (e) {}
     }
 
-    // 2. Si las columnas están en 0 o aún no sincronizadas, calcular desde 'user_reseñas'
-    const { data } = await supabase
-      .from('user_reseñas')
-      .select('stars')
-      .eq('target_user_id', studentId);
+    // 2. Consultar IDs no-UUID en caso de que target_user_id sea de tipo TEXT
+    if (nonUuids.length > 0) {
+      try {
+        let q = supabase.from('user_reseñas').select('stars');
+        if (nonUuids.length === 1) {
+          q = q.eq('target_user_id', nonUuids[0]);
+        } else {
+          q = q.in('target_user_id', nonUuids);
+        }
+        const { data, error } = await q;
+        if (!error && data) {
+          votesList.push(...data);
+        }
+      } catch (e) {}
+    }
 
-    if (data && data.length > 0) {
-      data.forEach((v: any) => {
+    if (votesList.length > 0) {
+      votesList.forEach((v: any) => {
         const s = Math.round(Number(v.stars));
         if (s >= 1 && s <= 5) {
           breakdown[s] = (breakdown[s] || 0) + 1;
         }
       });
+      return breakdown;
+    }
 
-      // Sincronizar en segundo plano la fila del estudiante en 'students'
-      supabase
-        .from('students')
-        .update({
-          stars_1: breakdown[1],
-          stars_2: breakdown[2],
-          stars_3: breakdown[3],
-          stars_4: breakdown[4],
-          stars_5: breakdown[5],
-        })
-        .eq('id', studentId)
-        .then(() => {})
-        .catch(() => {});
+    // 3. Si no hay registros en user_reseñas, consultar columnas cacheadas en la tabla 'students'
+    if (rawIds.length > 0) {
+      try {
+        const { data: studentData } = await supabase
+          .from('students')
+          .select('stars_1, stars_2, stars_3, stars_4, stars_5')
+          .in('id', rawIds)
+          .limit(1)
+          .maybeSingle();
+
+        if (studentData) {
+          const s1 = Number(studentData.stars_1) || 0;
+          const s2 = Number(studentData.stars_2) || 0;
+          const s3 = Number(studentData.stars_3) || 0;
+          const s4 = Number(studentData.stars_4) || 0;
+          const s5 = Number(studentData.stars_5) || 0;
+
+          if (s1 > 0 || s2 > 0 || s3 > 0 || s4 > 0 || s5 > 0) {
+            return { 1: s1, 2: s2, 3: s3, 4: s4, 5: s5 };
+          }
+        }
+      } catch (e) {}
     }
 
     return breakdown;

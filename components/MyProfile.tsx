@@ -41,7 +41,8 @@ import {
   Maximize2,
   X,
   CreditCard,
-  Lock
+  Lock,
+  MessageSquare
 } from 'lucide-react';
 import { 
   getUserInteractions, 
@@ -59,8 +60,11 @@ import {
   getStudentById,
   getStudentInteractionCounts,
   getStudentRatingBreakdown,
+  getStudentReviewsList,
+  StudentReviewItem,
   getStudentLoveMessages,
-  StudentLoveMessage
+  StudentLoveMessage,
+  submitStudentVote
 } from '@/src/lib/students';
 import { getUserActitudCounts, getUserActitudVotes, toggleUserActitudVote } from '@/src/lib/userActitud';
 import { getUserCrushesCount, hasUserCrushed, toggleUserCrush } from '@/src/lib/userCrushes';
@@ -145,8 +149,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [claimedStudent, setClaimedStudent] = useState<Student | null>(null);
   const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'reseñas' | 'crushes' | 'estadisticas'>('mis_datos');
   const [claimedRatingBreakdown, setClaimedRatingBreakdown] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+  const [claimedReviews, setClaimedReviews] = useState<StudentReviewItem[]>([]);
   const [claimedLoveMessages, setClaimedLoveMessages] = useState<StudentLoveMessage[]>([]);
   const [loadingStudentData, setLoadingStudentData] = useState(false);
+  const [profileVotingInProgress, setProfileVotingInProgress] = useState(false);
+  const [profileVoteSuccessMsg, setProfileVoteSuccessMsg] = useState<string | null>(null);
 
   // Admin Dashboard Metrics State
   const [adminMetrics, setAdminMetrics] = useState<AdminDashboardData | null>(null);
@@ -255,6 +262,33 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       setCrushesCount(res.newCount);
     } catch (err) {
       console.error('Error al votar crush:', err);
+    }
+  };
+
+  const handleVoteUserProfile = async (stars: number) => {
+    if (!user) {
+      setErrorMsg('Debes iniciar sesión para calificar a este usuario.');
+      return;
+    }
+    const targetUserId = dbUser?.id || uid || claimedStudent?.id;
+    if (!targetUserId) return;
+    if (targetUserId === user.uid || targetUserId === dbUser?.id) {
+      setErrorMsg('No puedes calificar tu propio perfil.');
+      return;
+    }
+    try {
+      setProfileVotingInProgress(true);
+      const res = await submitStudentVote(targetUserId, user.uid, stars);
+      if (res.success) {
+        setProfileVoteSuccessMsg(`¡Has calificado con ${stars} ${stars === 1 ? 'estrella' : 'estrellas'} exitosamente!`);
+        setTimeout(() => setProfileVoteSuccessMsg(null), 3500);
+      } else if (res.error) {
+        setErrorMsg(res.error);
+      }
+    } catch (e: any) {
+      console.warn('Error al votar estrellas:', e);
+    } finally {
+      setProfileVotingInProgress(false);
     }
   };
 
@@ -507,7 +541,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
       let studentId: string | null = null;
       try {
-        const local = localStorage.getItem(`user_claimed_profile_${targetUid}`);
+        const local = localStorage.getItem(`user_claimed_profile_${targetUid}`) || (user?.uid ? localStorage.getItem(`user_claimed_profile_${user.uid}`) : null);
         if (local) {
           studentId = JSON.parse(local).studentId;
         }
@@ -517,39 +551,86 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         studentId = (dbUser as any).claimed_student_id;
       }
 
+      if (!studentId && (dbUser as any)?.profile_appeal) {
+        studentId = dbUser?.id || targetUid;
+      }
+
       // Si el display_name es Daniel Gustavo Castillo Ramirez o similar, asociar al estudiante de prueba
       if (!studentId && (dbUser?.display_name?.includes('Daniel Gustavo') || user?.displayName?.includes('Daniel Gustavo'))) {
         studentId = 'daniel.gustavo.castillo.ramirez';
       }
 
-      if (studentId) {
+      // Si es un perfil reclamado o verificado pero studentId aún no se resolvió, usar el UID
+      if (!studentId && ((dbUser as any)?.is_verified_student || (dbUser as any)?.profile_appeal)) {
+        studentId = targetUid;
+      }
+
+      if (studentId || targetUid) {
         try {
           setLoadingStudentData(true);
-          const studentData = await getStudentById(studentId);
-          if (studentData) {
-            const candidateIds = [studentData.id, targetUid, dbUser?.id].filter(Boolean) as string[];
-            const [counts, breakdown, messages] = await Promise.all([
-              getStudentInteractionCounts(studentData.id, dbUser?.id || targetUid),
-              getStudentRatingBreakdown(studentData.id),
-              getStudentLoveMessages(studentData.id, targetUid, candidateIds)
-            ]);
-
-            const realKnows = Math.max(counts.knows, (dbUser as any)?.knows_count || 0, studentData.knows_count || 0);
-            const realFans = Math.max(counts.fan, (dbUser as any)?.fans_count || 0, studentData.fans_count || 0);
-            const realCrushes = Math.max((dbUser as any)?.crushes_count || 0, studentData.crushes_count || 0);
-
-            studentData.knows_count = realKnows;
-            studentData.fans_count = realFans;
-            studentData.crushes_count = realCrushes;
-            setClaimedStudent(studentData);
-            setClaimedRatingBreakdown(breakdown);
-            if (messages && messages.length > 0) {
-              setClaimedLoveMessages(messages);
-            }
-            setFanCount(prev => Math.max(prev, realFans));
-            setKnowCount(prev => Math.max(prev, realKnows));
-            setCrushesCount(prev => Math.max(prev, realCrushes));
+          let studentData = studentId ? await getStudentById(studentId) : null;
+          if (!studentData) {
+            studentData = {
+              id: targetUid,
+              nombre_completo: (dbUser as any)?.nombre_completo || dbUser?.display_name || user?.displayName || 'Estudiante',
+              nombre: (dbUser as any)?.nombres || (dbUser as any)?.nombre || '',
+              apellidos: `${(dbUser as any)?.apellido_paterno || ''} ${(dbUser as any)?.apellido_materno || ''}`.trim(),
+              score: (dbUser as any)?.score || 0.0,
+              total_ratings: (dbUser as any)?.total_ratings || 0,
+              knows_count: (dbUser as any)?.knows_count || 0,
+              fans_count: (dbUser as any)?.fans_count || 0,
+              crushes_count: (dbUser as any)?.crushes_count || 0,
+              is_claimed: true,
+              claimed_by_uid: targetUid,
+              institute_id: (dbUser as any)?.institute_id || '9029cbec-ead6-48ae-aace-3c348b0dc325',
+            } as Student;
           }
+
+          const candidateIds = Array.from(new Set([
+            dbUser?.id,
+            targetUid,
+            user?.uid,
+            (dbUser as any)?.claimed_student_id,
+            studentId,
+            studentData?.id
+          ].filter(Boolean) as string[]));
+
+          const [counts, breakdown, messages, reviewsList] = await Promise.all([
+            getStudentInteractionCounts(studentData.id, dbUser?.id || targetUid),
+            getStudentRatingBreakdown(studentData.id, candidateIds),
+            getStudentLoveMessages(studentData.id, targetUid, candidateIds),
+            getStudentReviewsList(studentData.id, candidateIds),
+          ]);
+
+          // Calcular promedio real y total desde los votos registrados en user_reseñas
+          const totalVotesCount = Object.values(breakdown).reduce((a, b) => a + b, 0);
+          const sumStars = Object.entries(breakdown).reduce((acc, [s, c]) => acc + (Number(s) * c), 0);
+          const realScore = totalVotesCount > 0 ? Number((sumStars / totalVotesCount).toFixed(1)) : (studentData.score || 0.0);
+          const realTotalRatings = Math.max(totalVotesCount, studentData.total_ratings || 0);
+
+          studentData.score = realScore;
+          studentData.total_ratings = realTotalRatings;
+          if (dbUser) {
+            (dbUser as any).score = realScore;
+            (dbUser as any).total_ratings = realTotalRatings;
+          }
+
+          const realKnows = Math.max(counts.knows, (dbUser as any)?.knows_count || 0, studentData.knows_count || 0);
+          const realFans = Math.max(counts.fan, (dbUser as any)?.fans_count || 0, studentData.fans_count || 0);
+          const realCrushes = Math.max((dbUser as any)?.crushes_count || 0, studentData.crushes_count || 0);
+
+          studentData.knows_count = realKnows;
+          studentData.fans_count = realFans;
+          studentData.crushes_count = realCrushes;
+          setClaimedStudent(studentData);
+          setClaimedRatingBreakdown(breakdown);
+          setClaimedReviews(reviewsList);
+          if (messages && messages.length > 0) {
+            setClaimedLoveMessages(messages);
+          }
+          setFanCount(prev => Math.max(prev, realFans));
+          setKnowCount(prev => Math.max(prev, realKnows));
+          setCrushesCount(prev => Math.max(prev, realCrushes));
         } catch (err) {
           console.warn('Aviso al cargar datos del estudiante reclamado:', err);
         } finally {
@@ -559,7 +640,30 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     }
 
     loadClaimedStudent();
-  }, [user?.uid, uid, dbUser?.display_name, dbUser?.id, (dbUser as any)?.claimed_student_id]);
+
+    // Suscripción Realtime a user_reseñas para que las estrellas y votos se actualicen en vivo
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+
+    const channel = supabase
+      .channel(`myprofile-reseñas-${targetUid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_reseñas'
+        },
+        () => {
+          loadClaimedStudent();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.uid, uid, dbUser?.display_name, dbUser?.id, (dbUser as any)?.claimed_student_id, (dbUser as any)?.profile_appeal]);
 
   // Carga independiente de mensajes de amor de la comunidad (para perfil normal y reclamado)
   useEffect(() => {
@@ -1552,15 +1656,145 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   </div>
                 </div>
 
+                {/* Formulario rápido para calificar cuando no es tu propio perfil */}
+                {!isSelfProfile && (
+                  <div className="pt-4 border-t border-zinc-800/40 space-y-3">
+                    <p className="text-xs font-bold uppercase text-zinc-400 tracking-wider text-center">
+                      ¿Conoces a {dbUser?.display_name || user?.displayName || 'este usuario'}? ¡Deja tu calificación de estrellas!
+                    </p>
+
+                    <div className="flex items-center justify-center gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          disabled={profileVotingInProgress}
+                          onClick={() => handleVoteUserProfile(star)}
+                          className="p-2.5 bg-[#121212] hover:bg-[#eab308]/15 border border-zinc-800 hover:border-[#eab308]/40 rounded-xl text-zinc-500 hover:text-[#eab308] transition-all cursor-pointer disabled:opacity-50 active:scale-95 group shadow-sm"
+                          title={`Votar ${star} ${star === 1 ? 'estrella' : 'estrellas'}`}
+                        >
+                          <Star className="w-6 h-6 group-hover:scale-110 transition-transform fill-current group-hover:fill-[#eab308]" />
+                        </button>
+                      ))}
+                    </div>
+
+                    {profileVoteSuccessMsg && (
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center text-xs text-emerald-400 font-bold animate-in fade-in">
+                        {profileVoteSuccessMsg}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400 space-y-1">
                   <p className="font-bold text-white flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4 text-[#eab308]" />
                     Reputación en la Comunidad
                   </p>
                   <p>
-                    Cualquier miembro de la comunidad puede calificar tu perfil con estrellas. Tus estrellas aumentan tu reputación en la red social.
+                    {isSelfProfile
+                      ? 'Cualquier miembro de la comunidad puede calificar tu perfil con estrellas. Cada reseña se registra con su autor y fecha abajo en tiempo real.'
+                      : 'Tus estrellas otorgadas fortalecen la reputación de este usuario en la red social Starryz.'}
                   </p>
                 </div>
+              </div>
+
+              {/* LISTADO DETALLADO DE RESEÑAS RECIBIDAS */}
+              <div className="bg-[#050505] border border-zinc-800/60 rounded-2xl p-6 sm:p-8 space-y-5 shadow-lg">
+                <div className="flex items-center justify-between gap-3 border-b border-zinc-800/60 pb-4 flex-wrap">
+                  <div className="space-y-1">
+                    <h4 className="text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-[#eab308]" />
+                      Reseñas Recibidas ({claimedReviews.length})
+                    </h4>
+                    <p className="text-xs text-zinc-400">
+                      Historial de calificaciones de estrellas otorgadas por la comunidad.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-mono font-bold">
+                    {claimedReviews.length} {claimedReviews.length === 1 ? 'reseña registrada' : 'reseñas registradas'}
+                  </span>
+                </div>
+
+                {claimedReviews.length === 0 ? (
+                  <div className="text-center py-12 px-4 rounded-xl border border-dashed border-zinc-800/80 bg-zinc-950/40 space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-500">
+                      <Star className="w-6 h-6 stroke-[1.5]" />
+                    </div>
+                    <div className="space-y-1 max-w-sm mx-auto">
+                      <p className="text-sm font-bold text-zinc-300">
+                        {isSelfProfile ? 'Aún no tienes reseñas recibidas' : 'Este usuario aún no tiene reseñas'}
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        {isSelfProfile
+                          ? 'Cuando otros usuarios o estudiantes de la comunidad califiquen tu perfil, aparecerán aquí con su foto, nombre y fecha.'
+                          : '¡Sé el primero en calificar este perfil con estrellas!'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {claimedReviews.map((review) => {
+                      const dateFormatted = review.created_at
+                        ? new Date(review.created_at).toLocaleDateString('es-ES', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        : 'Reciente';
+
+                      return (
+                        <div 
+                          key={review.id}
+                          className="bg-[#0b0b0b] border border-zinc-800/70 hover:border-zinc-700/80 rounded-xl p-4 transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            {review.voter_avatar ? (
+                              <img 
+                                src={review.voter_avatar} 
+                                alt={review.voter_name || 'Usuario'} 
+                                className="w-10 h-10 rounded-full object-cover border border-zinc-700 shrink-0" 
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500/20 to-yellow-600/20 border border-amber-500/30 flex items-center justify-center text-[#eab308] font-black text-sm shrink-0">
+                                {(review.voter_name || 'U').charAt(0).toUpperCase()}
+                              </div>
+                            )}
+
+                            <div className="min-w-0 space-y-0.5">
+                              <p className="text-sm font-bold text-white truncate">
+                                {review.voter_name || 'Miembro de la comunidad'}
+                              </p>
+                              <p className="text-[11px] text-zinc-500 font-mono">
+                                {dateFormatted}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-start sm:self-center shrink-0 bg-zinc-900/80 px-3 py-1.5 rounded-lg border border-zinc-800/60">
+                            <div className="flex items-center gap-1">
+                              {[1, 2, 3, 4, 5].map((s) => (
+                                <Star 
+                                  key={s}
+                                  className={`w-4 h-4 ${
+                                    s <= review.stars 
+                                      ? 'fill-[#eab308] text-[#eab308]' 
+                                      : 'text-zinc-700'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-xs font-black text-[#eab308] font-mono ml-1">
+                              {review.stars}.0
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           ) : claimedMainTab === 'crushes' ? (
