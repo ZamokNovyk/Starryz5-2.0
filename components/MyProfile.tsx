@@ -69,6 +69,8 @@ import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificatio
 import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
 import AvatarUploadModal from '@/components/Modals/AvatarUploadModal';
 import GenderBadge from '@/components/GenderBadge';
+import CountrySelector from '@/components/CountrySelector';
+import { findCountry, getFlagUrl } from '@/src/data/countries';
 
 interface SupabaseUser {
   id: string;
@@ -80,6 +82,8 @@ interface SupabaseUser {
   apellido_materno?: string | null;
   username?: string | null;
   gender?: string | null;
+  country?: string | null;
+  country_code?: string | null;
   role?: string | null;
   photo_url: string | null;
   created_at: string;
@@ -130,6 +134,9 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [isDniVerified, setIsDniVerified] = useState(false);
   const [selectedGender, setSelectedGender] = useState<'male' | 'female' | ''>('');
   const [initialGender, setInitialGender] = useState<'male' | 'female' | ''>('');
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string>('');
+  const [selectedCountryName, setSelectedCountryName] = useState<string>('');
+  const [initialCountryCode, setInitialCountryCode] = useState<string>('');
   const [usernameAvailability, setUsernameAvailability] = useState<{
     status: 'idle' | 'checking' | 'available' | 'taken' | 'error';
     message: string;
@@ -361,6 +368,20 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         setSelectedGender(loadedGender);
         setInitialGender(loadedGender);
 
+        let loadedCountryCode = (data as any)?.country_code || '';
+        let loadedCountryName = (data as any)?.country || (data as any)?.nationality || '';
+        if (!loadedCountryCode && loadedCountryName) {
+          const match = findCountry(loadedCountryName);
+          if (match) loadedCountryCode = match.code;
+        }
+        if (!loadedCountryCode) {
+          loadedCountryCode = localStorage.getItem(`user_country_code_${user.uid}`) || '';
+          loadedCountryName = localStorage.getItem(`user_country_${user.uid}`) || '';
+        }
+        setSelectedCountryCode(loadedCountryCode);
+        setSelectedCountryName(loadedCountryName);
+        setInitialCountryCode(loadedCountryCode);
+
         setUsernameAvailability({ status: 'available', message: 'Nombre actual verificado' });
       }
 
@@ -505,6 +526,20 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           }
           setSelectedGender(loadedGender);
           setInitialGender(loadedGender);
+
+          let loadedCountryCode = (data as any)?.country_code || '';
+          let loadedCountryName = (data as any)?.country || (data as any)?.nationality || '';
+          if (!loadedCountryCode && loadedCountryName) {
+            const match = findCountry(loadedCountryName);
+            if (match) loadedCountryCode = match.code;
+          }
+          if (!loadedCountryCode) {
+            loadedCountryCode = localStorage.getItem(`user_country_code_${targetUid}`) || '';
+            loadedCountryName = localStorage.getItem(`user_country_${targetUid}`) || '';
+          }
+          setSelectedCountryCode(loadedCountryCode);
+          setSelectedCountryName(loadedCountryName);
+          setInitialCountryCode(loadedCountryCode);
 
           setUsernameAvailability({ status: 'available', message: 'Nombre actual asignado' });
         }
@@ -1015,6 +1050,40 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         console.warn('Aviso guardando gender en Supabase:', gErr);
       }
 
+      // 2.5. Actualizar 'country' y 'country_code' en Supabase si la columna existe en la tabla
+      try {
+        let countryQuery = supabase.from('users').update({ 
+          country: selectedCountryName || null,
+          country_code: selectedCountryCode || null,
+        });
+        if (user.email) {
+          countryQuery = countryQuery.eq('email', user.email);
+        } else {
+          countryQuery = countryQuery.eq('id', dbUser?.id || user.uid);
+        }
+        const { error: countryErr } = await countryQuery;
+
+        if (countryErr) {
+          console.warn('Nota sobre columnas country en tabla users:', countryErr.message);
+          try {
+            let fallbackQuery = supabase.from('users').update({ country: selectedCountryName || null });
+            if (user.email) fallbackQuery = fallbackQuery.eq('email', user.email);
+            else fallbackQuery = fallbackQuery.eq('id', dbUser?.id || user.uid);
+            await fallbackQuery;
+          } catch (_) {}
+        }
+      } catch (cErr) {
+        console.warn('Aviso guardando país en Supabase:', cErr);
+      }
+
+      if (selectedCountryCode) {
+        localStorage.setItem(`user_country_code_${user.uid}`, selectedCountryCode);
+        localStorage.setItem(`user_country_${user.uid}`, selectedCountryName);
+      } else {
+        localStorage.removeItem(`user_country_code_${user.uid}`);
+        localStorage.removeItem(`user_country_${user.uid}`);
+      }
+
       // Guardar siempre en localStorage de respaldo para el usuario
       if (selectedGender) {
         localStorage.setItem(`user_gender_${user.uid}`, selectedGender);
@@ -1041,10 +1110,13 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       setInitialDisplayName(cleanFullName);
       setDisplayNameInput(cleanFullName);
       setInitialGender(selectedGender);
+      setInitialCountryCode(selectedCountryCode);
       setDbUser({
         ...dbUser,
         display_name: cleanFullName,
         gender: selectedGender || null,
+        country: selectedCountryName || null,
+        country_code: selectedCountryCode || null,
         dni: cleanDni || (dbUser as any)?.dni || null,
         institute_id: isClaimedUser ? fixedInstituteId : (dbUser?.institute_id || null),
         profile_appeal: isClaimedUser,
@@ -1201,6 +1273,22 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </span>
               )}
             </div>
+
+            {/* País de origen / Nacionalidad */}
+            {(selectedCountryCode || (dbUser as any)?.country_code || dbUser?.country) && (
+              <div className="flex items-center gap-1.5 pt-0.5 animate-in fade-in select-none">
+                <img
+                  src={getFlagUrl(selectedCountryCode || (dbUser as any)?.country_code || (findCountry(dbUser?.country || '')?.code || 'pe'), 'w40')}
+                  srcSet={`${getFlagUrl(selectedCountryCode || (dbUser as any)?.country_code || (findCountry(dbUser?.country || '')?.code || 'pe'), 'w80')} 2x`}
+                  alt={`Bandera de ${selectedCountryName || dbUser?.country || 'País'}`}
+                  className="w-4 h-2.5 sm:w-5 sm:h-3.5 object-cover rounded-2xs border border-zinc-700/60 shadow-xs flex-shrink-0"
+                  loading="lazy"
+                />
+                <span className="text-[11px] font-bold text-zinc-400 tracking-tight">
+                  {selectedCountryName || dbUser?.country}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1844,9 +1932,17 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       </div>
                     )}
 
-
-
-                    {/* Creado el */}
+                    {/* País / Nacionalidad con banderas CDN de flagcdn.com */}
+                    <div className="sm:col-span-2">
+                      <CountrySelector
+                        value={selectedCountryCode || selectedCountryName}
+                        onChange={(c) => {
+                          setSelectedCountryCode(c ? c.code : '');
+                          setSelectedCountryName(c ? c.name : '');
+                        }}
+                        disabled={!isOwnProfile || saving}
+                      />
+                    </div>
                     <div className="space-y-2">
                       <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5" /> Fecha de Registro
