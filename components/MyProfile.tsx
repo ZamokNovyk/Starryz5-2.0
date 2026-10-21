@@ -17,10 +17,7 @@ import {
   Database,
   ArrowLeft,
   Sparkles,
-  Bookmark,
   Trash2,
-  Folder,
-  Plus,
   ChevronRight,
   Heart,
   HeartCrack,
@@ -32,7 +29,6 @@ import {
   GraduationCap,
   Users,
   Settings2,
-  BarChart3,
   TrendingUp,
   Activity,
   Globe,
@@ -68,7 +64,6 @@ import {
 } from '@/src/lib/students';
 import { getUserActitudCounts, getUserActitudVotes, toggleUserActitudVote } from '@/src/lib/userActitud';
 import { getUserCrushesCount, hasUserCrushed, toggleUserCrush } from '@/src/lib/userCrushes';
-import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
 import StudentNotificationModal from '@/components/Modals/StudentNotificationModal';
@@ -141,13 +136,13 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   }>({ status: 'idle', message: '' });
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [profileTab, setProfileTab] = useState<'info' | 'collections' | 'interactions' | 'subscriptions' | 'admin'>('info');
+  const [profileTab, setProfileTab] = useState<'info' | 'interactions' | 'subscriptions' | 'admin'>('info');
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isViewPhotoModalOpen, setIsViewPhotoModalOpen] = useState(false);
 
   // Estados para el perfil transformado tras reclamar perfil con DNI
   const [claimedStudent, setClaimedStudent] = useState<Student | null>(null);
-  const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'reseñas' | 'crushes' | 'estadisticas'>('mis_datos');
+  const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'reseñas' | 'crushes'>('mis_datos');
   const [claimedRatingBreakdown, setClaimedRatingBreakdown] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [claimedReviews, setClaimedReviews] = useState<StudentReviewItem[]>([]);
   const [claimedLoveMessages, setClaimedLoveMessages] = useState<StudentLoveMessage[]>([]);
@@ -158,15 +153,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   // Admin Dashboard Metrics State
   const [adminMetrics, setAdminMetrics] = useState<AdminDashboardData | null>(null);
   const [loadingAdminMetrics, setLoadingAdminMetrics] = useState(false);
-
-  // Colecciones State
-  const [collections, setCollections] = useState<any[]>([]);
-  const [collectionItems, setCollectionItems] = useState<any[]>([]);
-  const [selectedColId, setSelectedColId] = useState<string | null>(null);
-  const [loadingCollections, setLoadingCollections] = useState(false);
-  const [newColInputName, setNewColInputName] = useState('');
-  const [creatingColProfile, setCreatingColProfile] = useState(false);
-  const [collectionsError, setCollectionsError] = useState('');
 
   // Interacciones State
   const [interactions, setInteractions] = useState<UserInteractionItem[]>([]);
@@ -771,106 +757,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     return () => clearTimeout(timer);
   }, [displayNameInput, initialDisplayName, isOwnProfile, loading, dbUser?.id, user?.uid]);
 
-  // Cargar colecciones en la pestaña 'collections'
-  useEffect(() => {
-    async function loadCollectionsAndItems() {
-      const targetUid = uid || user?.uid;
-      if (!targetUid) return;
 
-      try {
-        setLoadingCollections(true);
-        setCollectionsError('');
-        const { getUserCollections, getAllCollectionItems } = await import('@/src/lib/collections');
-        const cols = await getUserCollections(targetUid);
-        setCollections(cols);
-
-        const items = await getAllCollectionItems(targetUid);
-        setCollectionItems(items);
-
-        if (cols.length > 0 && !selectedColId) {
-          const defaultCol = cols.find(c => c.name.toLowerCase() === 'guardados') || cols[0];
-          setSelectedColId(defaultCol.id);
-        }
-      } catch (err: any) {
-        console.error('Error al cargar colecciones:', err);
-        setCollectionsError('Error al conectar con las colecciones.');
-      } finally {
-        setLoadingCollections(false);
-      }
-    }
-
-    if (profileTab === 'collections') {
-      loadCollectionsAndItems();
-    }
-  }, [profileTab, uid, user?.uid]);
-
-  const handleCreateCollectionInProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const targetUid = uid || user?.uid;
-    if (!targetUid || !newColInputName.trim()) return;
-
-    setCreatingColProfile(true);
-    setCollectionsError('');
-    try {
-      const { createNewCollection } = await import('@/src/lib/collections');
-      const name = newColInputName.trim();
-      if (collections.some(c => c.name.toLowerCase() === name.toLowerCase())) {
-        setCollectionsError('Ya existe una colección con ese nombre.');
-        setCreatingColProfile(false);
-        return;
-      }
-
-      const newCol = await createNewCollection(targetUid, name);
-      setCollections(prev => [...prev, newCol]);
-      setSelectedColId(newCol.id);
-      setNewColInputName('');
-    } catch (err: any) {
-      console.error('Error al crear colección:', err);
-      setCollectionsError(err?.message || 'Error al crear la colección.');
-    } finally {
-      setCreatingColProfile(false);
-    }
-  };
-
-  const handleDeleteCollectionInProfile = async (colId: string) => {
-    const targetUid = uid || user?.uid;
-    if (!targetUid || !colId) return;
-
-    // Actualizar estado optimistamente
-    const updatedCols = collections.filter(c => c.id !== colId);
-    setCollections(updatedCols);
-    setCollectionItems(prev => prev.filter(i => i.collection_id !== colId));
-
-    if (selectedColId === colId) {
-      setSelectedColId(updatedCols.length > 0 ? updatedCols[0].id : null);
-    }
-
-    try {
-      const { deleteCollection } = await import('@/src/lib/collections');
-      await deleteCollection(targetUid, colId);
-    } catch (err) {
-      console.error('Error al eliminar colección:', err);
-    }
-  };
-
-  const handleRemoveItemFromCollectionInProfile = async (colId: string, itemId: string) => {
-    const targetUid = uid || user?.uid;
-    if (!targetUid || !colId || !itemId) return;
-
-    try {
-      const { toggleItemInCollection } = await import('@/src/lib/collections');
-      await toggleItemInCollection(targetUid, colId, itemId, {
-        item_type: 'professor', // Dummy payload since we are only removing
-        item_name: '',
-        item_image: null,
-        item_subtitle: null
-      });
-
-      setCollectionItems(prev => prev.filter(i => !(i.collection_id === colId && i.item_id === itemId)));
-    } catch (err) {
-      console.error('Error al quitar elemento de colección:', err);
-    }
-  };
 
   // Cargar métricas del Admin Dashboard
   const loadAdminMetrics = async () => {
@@ -1257,22 +1144,34 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               </button>
             )}
             
-            {dbUser?.role === 'admin' ? (
-              <div 
-                title="Administrador Verificado"
-                className="absolute bottom-0 right-0 p-1.5 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 text-black shadow-[0_0_16px_rgba(245,158,11,0.7)] ring-3 ring-[#0d0d0d] flex items-center justify-center animate-in zoom-in duration-300 z-20"
-              >
-                <CheckCircle2 className="w-4 h-4 text-black stroke-[3]" />
-              </div>
-            ) : (
-              <span className={`absolute bottom-0 right-0 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider z-20 ${
-                dbUser?.is_anonymous 
-                  ? 'bg-[#151515] border border-[#eab308]/30 text-[#eab308]' 
-                  : 'bg-[#eab308] text-black'
-              }`}>
-                {dbUser?.is_anonymous ? 'Anónimo' : 'Google'}
+            {/* Círculo Pequeño Arriba: Ícono del sexo del estudiante */}
+            {(() => {
+              const currentGender = dbUser?.gender || selectedGender;
+              const isMale = currentGender === 'male' || currentGender === 'hombre';
+              return (
+                <div 
+                  className={`absolute top-5 -right-3 w-7 h-7 rounded-full flex items-center justify-center font-black text-xs z-20 ring-2 ring-[#0d0d0d] shadow-md select-none ${
+                    isMale 
+                      ? 'bg-[#0b172a] border border-blue-500/60 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.3)]' 
+                      : 'bg-[#1e0d19] border border-pink-500/60 text-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.3)]'
+                  }`}
+                  title={isMale ? 'Hombre ♂' : 'Mujer ♀'}
+                >
+                  <span>{isMale ? '♂' : '♀'}</span>
+                </div>
+              );
+            })()}
+
+            {/* Círculo Pequeño Abajo: Calificación general */}
+            <div 
+              className="absolute bottom-1 -right-3.5 h-7 px-1.5 min-w-[28px] rounded-full bg-[#14120a] border border-amber-500/60 text-[#eab308] flex items-center justify-center gap-0.5 z-20 ring-2 ring-[#0d0d0d] shadow-[0_0_12px_rgba(245,158,11,0.3)] select-none"
+              title={`Calificación general: ${Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0).toFixed(1)} / 5.0`}
+            >
+              <Star className="w-3 h-3 fill-[#eab308] text-[#eab308] shrink-0" />
+              <span className="text-[10px] font-black tracking-tight leading-none">
+                {Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0).toFixed(1)}
               </span>
-            )}
+            </div>
           </div>
 
           {/* Botón visible de cambiar foto para mayor facilidad de uso */}
@@ -1302,105 +1201,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </span>
               )}
             </div>
-            
-            {dbUser?.role === 'admin' && (
-              <div className="pt-0.5 pb-0.5">
-                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_14px_rgba(245,158,11,0.25)]">
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400 stroke-[2.5]" />
-                  ADMIN
-                </span>
-              </div>
-            )}
-
-            {/* Badge de Estudiante Oficial Verificado */}
-            {claimedStudent ? (
-              <div className="pt-1 flex flex-col items-center gap-1.5 animate-in fade-in">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_14px_rgba(16,185,129,0.25)]">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
-                  ESTUDIANTE VERIFICADO
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 text-[10px] font-mono">
-                    DNI: {claimedStudent.dni || '60036463'}
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[#eab308] text-[10px] font-black">
-                    <Star className="w-3 h-3 fill-[#eab308]" />
-                    <span>{(claimedStudent.score || 0).toFixed(1)}</span>
-                  </span>
-                </div>
-              </div>
-            ) : (typeof window !== 'undefined' && user?.uid && localStorage.getItem(`user_claimed_profile_${dbUser?.id || user.uid}`)) ? (
-              <div className="pt-0.5 pb-0.5">
-                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[10px] font-black tracking-wider uppercase shadow-[0_0_14px_rgba(16,185,129,0.25)]">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
-                  ESTUDIANTE VERIFICADO
-                </span>
-              </div>
-            ) : null}
-
-            {isOwnProfile && (
-              <p className="text-xs text-zinc-400 truncate max-w-full">
-                {dbUser?.email || 'Sesión Local Sin Correo'}
-              </p>
-            )}
-
-            {(dbUser?.gender || selectedGender) && (
-              <div className="pt-1">
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase border shadow-sm ${
-                  (dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre'
-                    ? 'bg-blue-950/50 border-blue-500/40 text-blue-300'
-                    : 'bg-pink-950/50 border-pink-500/40 text-pink-300'
-                }`}>
-                  <span className="text-xs font-black">
-                    {(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? '♂' : '♀'}
-                  </span>
-                  <span>
-                    {(dbUser?.gender || selectedGender) === 'male' || (dbUser?.gender || selectedGender) === 'hombre' ? 'Hombre' : 'Mujer'}
-                  </span>
-                </span>
-              </div>
-            )}
           </div>
-
-          {dbUser?.role === 'admin' && (
-            <div className="w-full border-t border-[#ffffff10] pt-4 space-y-3 text-left">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-zinc-500 font-medium">Rol de Cuenta</span>
-                {dbUser?.role === 'admin' ? (
-                  <span className="inline-flex items-center gap-1 font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md text-[10px] tracking-wider uppercase shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                    <ShieldCheck className="w-3 h-3 text-amber-400" /> ADMIN VERIFICADO
-                  </span>
-                ) : (
-                  <span className="font-bold text-zinc-400 uppercase font-mono text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05]">
-                    {dbUser?.role === 'student' ? 'Estudiante' : (dbUser?.role || 'Estudiante')}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-zinc-500 font-medium">Proveedor Auth</span>
-                <span className="font-bold text-zinc-300 uppercase font-mono">
-                  {dbUser?.is_anonymous ? 'Firebase Anon' : 'Google OAuth'}
-                </span>
-              </div>
-              
-              {isOwnProfile && (
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-zinc-500 font-medium">ID en Supabase</span>
-                  <span className="font-mono text-zinc-400 text-[10px] bg-[#141414] px-1.5 py-0.5 rounded border border-[#ffffff05] truncate max-w-[110px]" title={dbUser?.id}>
-                    {dbUser?.id ? `${dbUser.id.substring(0, 8)}...` : '...'}
-                  </span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-zinc-500 font-medium">Sincronización</span>
-                <span className="text-emerald-400 font-bold flex items-center gap-1">
-                  <Database className="w-3 h-3" /> Activa
-                </span>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* LADO DERECHO: Formulario y Consulta Base de Datos */}
@@ -1512,19 +1313,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 )}
               </button>
 
-              <button
-                type="button"
-                onClick={() => setClaimedMainTab('estadisticas')}
-                title="Estadísticas"
-                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                  claimedMainTab === 'estadisticas'
-                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
-                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
-                }`}
-              >
-                <BarChart3 className="w-4 h-4 flex-shrink-0 text-current" />
-                <span>Estadísticas</span>
-              </button>
             </div>
 
             {/* Sub-pestañas dentro de "Mis Datos" */}
@@ -1540,18 +1328,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   }`}
                 >
                   <span>Información</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setProfileTab('collections')}
-                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                    profileTab === 'collections'
-                      ? 'bg-zinc-800 text-white font-extrabold'
-                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
-                  }`}
-                >
-                  <span>Colecciones</span>
                 </button>
 
                 <button
@@ -1896,21 +1672,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </div>
               </div>
             </div>
-          ) : claimedMainTab === 'estadisticas' ? (
-            /* TAB: ESTADÍSTICAS Y TENDENCIAS */
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <StudentTrendsEngine
-                studentId={claimedStudent?.id || dbUser?.firebase_uid || 'user'}
-                studentName={claimedStudent?.nombre_completo || dbUser?.display_name || 'Usuario'}
-                currentValues={{
-                  knowsCount: claimedStudent?.knows_count || 0,
-                  fansCount: claimedStudent?.fans_count || 0,
-                  crushesCount: claimedStudent?.crushes_count || 0,
-                  score: claimedStudent?.score || 0,
-                  viewsCount: claimedStudent?.views_count || 0
-                }}
-              />
-            </div>
+
           ) : (
             /* TAB: MIS DATOS / PERFIL ESTÁNDAR */
             <>
@@ -1920,31 +1682,16 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               <div>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
-                    <ShieldCheck className={`w-5 h-5 ${dbUser?.role === 'admin' ? 'text-amber-400' : 'text-[#eab308]'}`} /> 
-                    {dbUser?.role === 'admin' 
-                      ? (isOwnProfile ? 'Panel de Perfil Administrador' : 'Perfil Administrador de Starryz')
-                      : (isOwnProfile ? 'Datos del Alumno en la DB' : 'Datos Públicos del Alumno')}
+                    <User className="w-5 h-5 text-[#eab308]" /> 
+                    {isOwnProfile ? 'Mis Datos Personales' : 'Información Personal'}
                   </h3>
-
-                  {dbUser?.role === 'admin' && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.4)]">
-                      <ShieldCheck className="w-3.5 h-3.5 text-black stroke-[3]" /> ADMIN VERIFICADO
-                    </span>
-                  )}
                 </div>
-                <p className="text-xs text-zinc-400 mt-1">
-                  {dbUser?.role === 'admin'
-                    ? 'Esta cuenta cuenta con privilegios administrativos autenticados en la plataforma Starryz.'
-                    : (isOwnProfile 
-                      ? 'Consulta en tiempo real los campos guardados en Supabase asociados a tu credencial de Firebase. Puedes modificar tu nombre público a continuación.'
-                      : 'Esta es la información comunitaria que el estudiante comparte públicamente en Starryz 5 de forma sincronizada con Supabase.')}
-                </p>
               </div>
 
               {loading ? (
                 <div className="py-12 flex flex-col items-center justify-center space-y-3">
                   <Loader2 className="w-8 h-8 text-[#eab308] animate-spin" />
-                  <p className="text-xs text-zinc-400 font-mono">Consultando base de datos PostgreSQL...</p>
+                  <p className="text-xs text-zinc-400 font-mono">Cargando datos...</p>
                 </div>
               ) : (
                 <form onSubmit={handleSaveChanges} className="space-y-6">
@@ -1961,21 +1708,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/30 text-red-300 text-xs flex items-center gap-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
                       <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                       <span>{errorMsg}</span>
-                    </div>
-                  )}
-
-                  {/* Banner si el usuario no tiene DNI registrado aún */}
-                  {isOwnProfile && !dniInput && !isDniVerified && (
-                    <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-3 animate-in fade-in">
-                      <CreditCard className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <strong className="text-white block font-bold text-xs uppercase tracking-wide">
-                          Registro de DNI Requerido para Reclamar Perfil
-                        </strong>
-                        <p className="text-zinc-300 text-xs leading-relaxed">
-                          Para poder reclamar y certificar tu perfil oficial de estudiante en el instituto, ingresa tu número de DNI oficial en el campo inferior y presiona <strong>GUARDAR CAMBIOS</strong>.
-                        </p>
-                      </div>
                     </div>
                   )}
 
@@ -2048,17 +1780,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                           />
                         </div>
                       </div>
-
-                      {/* Vista previa del Nombre Completo en el Buscador */}
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#111111] border border-zinc-800/80 text-xs">
-                        <div className="flex items-center gap-2 text-zinc-400 text-[11px]">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Nombre registrado para búsqueda:</span>
-                        </div>
-                        <span className="text-[#eab308] font-black uppercase tracking-wide truncate max-w-[240px] sm:max-w-none">
-                          {`${nombresInput} ${apellidoPaternoInput} ${apellidoMaternoInput}`.trim() || 'Sin nombre asignado'}
-                        </span>
-                      </div>
                     </div>
 
                     {/* DNI Oficial para Reclamo de Perfil */}
@@ -2123,35 +1844,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       </div>
                     )}
 
-                    {/* Rol en el Sistema */}
-                    <div className="space-y-2">
-                      <label className={`block text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-1.5 ${
-                        dbUser?.role === 'admin' ? 'text-amber-400' : 'text-zinc-400'
-                      }`}>
-                        <ShieldCheck className={`w-3.5 h-3.5 ${dbUser?.role === 'admin' ? 'text-amber-400' : 'text-zinc-400'}`} /> 
-                        Rol en el Sistema
-                      </label>
-                      <div className="relative">
-                        {dbUser?.role === 'admin' ? (
-                          <div className="w-full bg-[#121212] border border-amber-500/30 text-amber-300 rounded-xl px-4 py-3 text-sm flex items-center justify-between font-bold">
-                            <span className="flex items-center gap-2">
-                              <ShieldCheck className="w-4 h-4 text-amber-400 stroke-[2.5]" />
-                              Administrador
-                            </span>
-                            <span className="px-2 py-0.5 rounded text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase font-black">
-                              ADMIN
-                            </span>
-                          </div>
-                        ) : (
-                          <input
-                            type="text"
-                            value={dbUser?.role === 'student' ? 'Estudiante (Estándar)' : (dbUser?.role || 'Estudiante (Estándar)')}
-                            disabled
-                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-400 rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium"
-                          />
-                        )}
-                      </div>
-                    </div>
+
 
                     {/* Creado el */}
                     <div className="space-y-2">
@@ -2243,23 +1936,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                             })}
                             disabled
                             className="w-full bg-[#121212] border border-[#eab308]/20 text-[#eab308] rounded-xl px-4 py-3 text-sm outline-none cursor-not-allowed font-medium shadow-[0_0_10px_rgba(234,179,8,0.03)]"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ID de Usuario (Solo se muestra a uno mismo) */}
-                    {isOwnProfile && (
-                      <div className="sm:col-span-2 space-y-2">
-                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5" /> ID Único de Usuario (Supabase)
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={dbUser?.id || user?.uid || ''}
-                            disabled
-                            className="w-full bg-[#121212] border border-[#ffffff0a] text-zinc-500 rounded-xl px-4 py-3 text-xs outline-none cursor-not-allowed font-mono"
                           />
                         </div>
                       </div>
@@ -2384,215 +2060,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </form>
               )}
             </div>
-          ) : profileTab === 'collections' ? (
-            // PESTAÑA COLECCIONES
-            <div className="space-y-6 animate-in fade-in duration-300">
-              {collectionsError && (
-                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{collectionsError}</span>
-                </div>
-              )}
 
-              {/* Crear nueva colección */}
-              {isOwnProfile && (
-                <form onSubmit={handleCreateCollectionInProfile} className="flex gap-2 bg-[#0d0d0d] border border-zinc-800/80 p-3 rounded-xl items-center animate-in fade-in slide-in-from-top-2 duration-300">
-                  <input
-                    type="text"
-                    value={newColInputName}
-                    onChange={(e) => {
-                      setNewColInputName(e.target.value);
-                      setCollectionsError('');
-                    }}
-                    placeholder="Crear nueva colección... (ej. Parciales 2026)"
-                    className="flex-1 bg-transparent text-xs text-white placeholder-zinc-600 outline-none px-2"
-                    maxLength={30}
-                    disabled={creatingColProfile}
-                  />
-                  <button
-                    type="submit"
-                    disabled={creatingColProfile || !newColInputName.trim()}
-                    className="bg-[#eab308] hover:bg-[#eab308]/95 text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer"
-                  >
-                    {creatingColProfile ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Plus className="w-3.5 h-3.5" />
-                    )}
-                    <span>Crear</span>
-                  </button>
-                </form>
-              )}
-
-              {loadingCollections ? (
-                <div className="py-12 flex flex-col items-center justify-center space-y-3">
-                  <Loader2 className="w-8 h-8 animate-spin text-[#eab308]" />
-                  <p className="text-xs text-zinc-500">Cargando tus colecciones de Supabase...</p>
-                </div>
-              ) : collections.length === 0 ? (
-                <div className="p-8 rounded-2xl border border-dashed border-zinc-800 text-center space-y-3 bg-[#050505]">
-                  <div className="inline-flex p-3 rounded-full bg-[#eab308]/10 border border-[#eab308]/20 text-[#eab308] mb-1">
-                    <Bookmark className="w-6 h-6 animate-pulse" />
-                  </div>
-                  <h4 className="text-sm font-black text-white uppercase tracking-wider">Sin colecciones guardadas</h4>
-                  <p className="text-xs text-zinc-500 max-w-sm mx-auto leading-relaxed">
-                    Aún no tienes elementos en tus colecciones de la comunidad estudiantil. ¡Explora profesores o centros educativos y añádelos a tus favoritos!
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Lista de Carpetas (Colecciones) - HORIZONTAL Y DESLIZABLE */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between px-1">
-                      <span className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider">
-                        MIS CARPETAS
-                      </span>
-                      <span className="text-[9px] text-zinc-500 font-bold uppercase">
-                        {collections.length} {collections.length === 1 ? 'carpeta' : 'carpetas'}
-                      </span>
-                    </div>
-
-                    {/* Contenedor horizontal deslizable */}
-                    <div className="flex gap-3 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x -mx-1 px-1">
-                      {collections.map((col) => {
-                        const count = collectionItems.filter(item => item.collection_id === col.id).length;
-                        const isSelected = selectedColId === col.id;
-                        const isDefault = col.name.toLowerCase() === 'guardados';
-
-                        return (
-                          <div
-                            key={col.id}
-                            onClick={() => setSelectedColId(col.id)}
-                            className={`min-w-[150px] sm:min-w-[170px] max-w-[210px] flex-shrink-0 snap-start p-3.5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between relative group ${
-                              isSelected
-                                ? 'bg-[#141414] border-[#eab308] text-white shadow-xl ring-1 ring-[#eab308]/20'
-                                : 'bg-[#0d0d0d] border-zinc-850 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-3">
-                              <div className={`p-2 rounded-xl ${isSelected ? 'bg-[#eab308]/15 text-[#eab308]' : 'bg-[#181818] text-zinc-500'}`}>
-                                <Folder className="w-4 h-4 fill-current" />
-                              </div>
-
-                              {isOwnProfile && !isDefault && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteCollectionInProfile(col.id);
-                                  }}
-                                  className="p-1.5 rounded-lg bg-zinc-900 hover:bg-red-950/40 text-zinc-500 hover:text-red-400 transition-all border border-zinc-800 hover:border-red-900/30"
-                                  title="Eliminar Colección"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-
-                            <div>
-                              <p className="text-xs font-black truncate uppercase tracking-tight text-white">{col.name}</p>
-                              <p className="text-[10px] text-zinc-500 font-medium mt-0.5">{count} {count === 1 ? 'elemento' : 'elementos'}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Elementos de la Colección Seleccionada */}
-                  <div className="space-y-3 pt-1 animate-in fade-in duration-300">
-                    <div className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider px-1 flex items-center justify-between">
-                      <span>CONTENIDO DE {collections.find(c => c.id === selectedColId)?.name || 'COLECCIÓN'}</span>
-                      <span className="bg-zinc-850 px-2 py-0.5 rounded text-[9px] text-zinc-400 font-bold uppercase">
-                        {collectionItems.filter(item => item.collection_id === selectedColId).length} Elementos
-                      </span>
-                    </div>
-
-                    {collectionItems.filter(item => item.collection_id === selectedColId).length === 0 ? (
-                      <div className="p-8 rounded-2xl border border-dashed border-zinc-850 bg-[#070707] text-center space-y-2 animate-in fade-in duration-250">
-                        <Bookmark className="w-5 h-5 text-zinc-700 mx-auto" />
-                        <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Carpeta Vacía</p>
-                        <p className="text-[11px] text-zinc-600 max-w-xs mx-auto">
-                          No has guardado ningún profesor o centro en esta lista todavía. ¡Vuelve al campus para agregar elementos!
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-2">
-                        {collectionItems
-                          .filter(item => item.collection_id === selectedColId)
-                          .map((item) => {
-                            const isProfessor = item.item_type === 'professor';
-                            return (
-                              <div
-                                key={item.id}
-                                className="flex items-center justify-between p-3.5 rounded-2xl border border-zinc-850/80 bg-[#0c0c0c] hover:bg-[#121212] transition-colors gap-3 animate-in fade-in duration-150"
-                              >
-                                <div
-                                  onClick={() => {
-                                    const path = isProfessor
-                                      ? `/profesores/${item.item_id}`
-                                      : `/educational_centers/${item.item_id}`;
-                                    navigateTo(path);
-                                  }}
-                                  className="flex items-center gap-3 cursor-pointer min-w-0 flex-1 group"
-                                >
-                                  {/* Avatar circle / initials fallback */}
-                                  <div className="w-10 h-10 rounded-xl bg-[#161616] border border-zinc-800 flex items-center justify-center text-zinc-400 font-bold text-sm uppercase flex-shrink-0 group-hover:border-[#eab308]/30 transition-colors">
-                                    {item.item_image ? (
-                                      <img
-                                        src={item.item_image}
-                                        alt={item.item_name}
-                                        className="w-full h-full object-cover rounded-xl"
-                                        referrerPolicy="no-referrer"
-                                      />
-                                    ) : (
-                                      item.item_name.substring(0, 1)
-                                    )}
-                                  </div>
-
-                                  <div className="min-w-0">
-                                    <h4 className="text-xs font-black text-white truncate group-hover:text-[#eab308] transition-colors uppercase tracking-tight">
-                                      {item.item_name}
-                                    </h4>
-                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
-                                      {item.item_subtitle || (isProfessor ? 'Profesor' : 'Centro Educativo')}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-1.5 flex-shrink-0">
-                                  <button
-                                    onClick={() => {
-                                      const path = isProfessor
-                                        ? `/profesores/${item.item_id}`
-                                        : `/educational_centers/${item.item_id}`;
-                                      navigateTo(path);
-                                    }}
-                                    className="p-2 rounded-xl bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer"
-                                    title="Ver Perfil"
-                                  >
-                                    <ChevronRight className="w-4 h-4" />
-                                  </button>
-
-                                  {isOwnProfile && (
-                                    <button
-                                      onClick={() => handleRemoveItemFromCollectionInProfile(selectedColId!, item.item_id)}
-                                      className="p-2 rounded-xl bg-red-950/10 hover:bg-red-950/40 text-zinc-600 hover:text-red-400 transition-all border border-transparent hover:border-red-900/20 cursor-pointer"
-                                      title="Quitar de la colección"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
           ) : profileTab === 'interactions' ? (
             // PESTAÑA MIS INTERACCIONES
             <div className="space-y-6 animate-in fade-in duration-300">

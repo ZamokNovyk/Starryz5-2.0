@@ -677,9 +677,6 @@ export default function App() {
       {/* Page Transitions Overlay & Settings Modal */}
       <PageTransitionOverlay />
       <TransitionSettingsModal />
-
-      {/* Technical integration badge */}
-      <SupabaseStatusBadge />
     </div>
   );
 }
