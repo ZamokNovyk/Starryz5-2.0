@@ -24,7 +24,7 @@ import ProfessorProfile from '@/src/pages/ProfessorProfile';
 import StudentProfile from '@/src/pages/StudentProfile';
 import AdminDashboard from '@/src/components/AdminDashboard';
 import { useAuth } from '@/src/context/AuthContext';
-import { LayoutGrid, User, Plus, Bell, X, Wrench } from 'lucide-react';
+import { LayoutGrid, User, Bell, X, Wrench } from 'lucide-react';
 import { useFCMNotifications } from '@/hooks/useFCMNotifications';
 import { Institution, Student } from '@/lib/mockData';
 import { getEducationalCenters, EducationalCenter } from '@/src/lib/centers';
@@ -589,16 +589,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* Botón flotante para crear centro (Exclusivo de la pantalla principal) */}
-      {route.pathname === '/' && (
-        <button
-          onClick={() => setCreateCenterModalOpen(true)}
-          className="fixed bottom-24 right-6 sm:right-8 z-40 w-14 h-14 bg-[#eab308] text-black rounded-2xl flex items-center justify-center shadow-[0_4px_25px_rgba(234,179,8,0.45)] hover:scale-105 active:scale-95 transition-all cursor-pointer border-none"
-          title="Crear Centro Educativo"
-        >
-          <Plus className="w-6 h-6 stroke-[3]" />
-        </button>
-      )}
+
 
       {/* MODALS */}
       <InstallAppModal

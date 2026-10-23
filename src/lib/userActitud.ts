@@ -231,3 +231,249 @@ export async function toggleUserActitudVote(
     return { activeVote: null, newCounts };
   }
 }
+
+export interface UserInteractionViewItem {
+  id: string;
+  type: 'knows' | 'fans' | 'ratings';
+  targetId: string;
+  targetName: string;
+  targetAvatar: string | null;
+  targetGender?: string | null;
+  targetCountry?: string | null;
+  targetCountryCode?: string | null;
+  targetSubtitle?: string;
+  targetScore?: number;
+  starsGiven?: number;
+  createdAt: string;
+}
+
+/**
+ * Obtiene todas las interacciones realizadas por el usuario:
+ * - Votos "Yo te conozco" en 'users_actitud'
+ * - Votos "Fans" en 'users_actitud'
+ * - Calificaciones otorgadas en 'user_reseñas'
+ * Enriquecidas con datos del usuario/estudiante calificado.
+ */
+export async function getUserGivenInteractions(
+  voterUids: string[]
+): Promise<UserInteractionViewItem[]> {
+  const cleanUids = Array.from(new Set(voterUids.filter(Boolean)));
+  if (cleanUids.length === 0) return [];
+
+  try {
+    // 1. Consultar users_actitud para 'yo_te_conozco' y 'fans'
+    const { data: actitudData, error: actitudErr } = await supabase
+      .from('users_actitud')
+      .select('*')
+      .in('voter_uid', cleanUids)
+      .order('created_at', { ascending: false });
+
+    if (actitudErr) {
+      console.warn('Aviso consultando users_actitud en getUserGivenInteractions:', actitudErr);
+    }
+
+    // 2. Consultar user_reseñas para calificaciones otorgadas
+    const { data: reviewsData, error: reviewsErr } = await supabase
+      .from('user_reseñas')
+      .select('*')
+      .in('voter_uid', cleanUids)
+      .order('created_at', { ascending: false });
+
+    if (reviewsErr) {
+      console.warn('Aviso consultando user_reseñas en getUserGivenInteractions:', reviewsErr);
+    }
+
+    // 3. Obtener todos los IDs de personas/estudiantes interactuados
+    const targetIds = Array.from(
+      new Set([
+        ...(actitudData || []).map((r: any) => r.target_user_id),
+        ...(reviewsData || []).map((r: any) => r.target_user_id),
+      ].filter(Boolean) as string[])
+    );
+
+    // 4. Enriquecer con datos de 'users' y 'students'
+    const profileMap = new Map<string, {
+      name: string;
+      avatar: string | null;
+      gender?: string | null;
+      country?: string | null;
+      countryCode?: string | null;
+      score?: number;
+      subtitle?: string;
+    }>();
+
+    if (targetIds.length > 0) {
+      // 1. Consultar tabla 'users' únicamente en las columnas solicitadas
+      try {
+        const { data: usersInfo, error: usersErr } = await supabase
+          .from('users')
+          .select('id, display_name, photo_url, country_code, gender')
+          .in('id', targetIds);
+
+        if (usersErr) {
+          console.warn('Aviso consultando tabla users en getUserGivenInteractions:', usersErr);
+        }
+
+        if (usersInfo && usersInfo.length > 0) {
+          for (const u of usersInfo) {
+            profileMap.set(u.id, {
+              name: u.display_name || 'Estudiante',
+              avatar: u.photo_url || null,
+              gender: u.gender || null,
+              countryCode: u.country_code || null,
+              subtitle: 'Estudiante Starryz'
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Aviso obteniendo usuarios en perfil de interacciones:', e);
+      }
+
+      // 2. Consultar tabla 'students' para perfiles de estudiantes
+      try {
+        const { data: studentsInfo, error: studentsErr } = await supabase
+          .from('students')
+          .select('id, nombre_completo, nombre, apellidos, avatar_url, score, gender, dni, claimed_by_uid')
+          .in('id', targetIds);
+
+        if (studentsErr) {
+          console.warn('Aviso consultando tabla students en getUserGivenInteractions:', studentsErr);
+        }
+
+        if (studentsInfo && studentsInfo.length > 0) {
+          for (const s of studentsInfo) {
+            const studentRealName = s.nombre_completo || [s.nombre, s.apellidos].filter(Boolean).join(' ').trim() || 'Estudiante';
+            const existing = profileMap.get(s.id) || {};
+            profileMap.set(s.id, {
+              name: studentRealName || existing.name || 'Estudiante',
+              avatar: s.avatar_url || existing.avatar || null,
+              gender: s.gender || existing.gender || null,
+              country: existing.country || null,
+              countryCode: existing.countryCode || null,
+              score: typeof s.score === 'number' ? Number(s.score) : existing.score,
+              subtitle: 'Estudiante Verificado'
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Aviso obteniendo estudiantes en perfil de interacciones:', e);
+      }
+    }
+
+    const results: UserInteractionViewItem[] = [];
+
+    // Mapear interacciones de users_actitud
+    if (actitudData && actitudData.length > 0) {
+      for (const row of actitudData) {
+        const info = profileMap.get(row.target_user_id) || {};
+        const isKnows = row.attitude_type === 'yo_te_conozco' || row.attitude_type === 'knows';
+        results.push({
+          id: row.id,
+          type: isKnows ? 'knows' : 'fans',
+          targetId: row.target_user_id,
+          targetName: info.name || 'Estudiante Starryz',
+          targetAvatar: info.avatar || null,
+          targetGender: info.gender || null,
+          targetCountry: info.country || null,
+          targetCountryCode: info.countryCode || null,
+          targetScore: info.score,
+          targetSubtitle: isKnows ? 'Siguiendo' : 'Voto de Fan',
+          createdAt: row.created_at || new Date().toISOString(),
+        });
+      }
+    }
+
+    // Mapear calificaciones de user_reseñas
+    if (reviewsData && reviewsData.length > 0) {
+      for (const row of reviewsData) {
+        const info = profileMap.get(row.target_user_id) || {};
+        results.push({
+          id: row.id,
+          type: 'ratings',
+          targetId: row.target_user_id,
+          targetName: info.name || 'Estudiante Starryz',
+          targetAvatar: info.avatar || null,
+          targetGender: info.gender || null,
+          targetCountry: info.country || null,
+          targetCountryCode: info.countryCode || null,
+          targetScore: info.score,
+          targetSubtitle: 'Calificación otorgada',
+          starsGiven: Number(row.stars) || 5,
+          createdAt: row.created_at || new Date().toISOString(),
+        });
+      }
+    }
+
+    // Opcional: Interacciones con profesores si existen en professor_interactions
+    try {
+      const { data: profData } = await supabase
+        .from('professor_interactions')
+        .select('*')
+        .in('user_id', cleanUids);
+
+      if (profData && profData.length > 0) {
+        for (const p of profData) {
+          if (p.type === 'knows' || p.type === 'fan') {
+            results.push({
+              id: p.id,
+              type: p.type === 'knows' ? 'knows' : 'fans',
+              targetId: p.professor_id,
+              targetName: p.professor_name || 'Profesor',
+              targetAvatar: p.professor_avatar || null,
+              targetSubtitle: p.professor_role || (p.type === 'knows' ? 'Profesor conocido' : 'Fan de profesor'),
+              createdAt: p.created_at || new Date().toISOString(),
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Ordenar de más reciente a más antiguo
+    results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return results;
+  } catch (err) {
+    console.error('Error al cargar interacciones completas:', err);
+    return [];
+  }
+}
+
+/**
+ * Retira una interacción (voto de actitud o calificación)
+ */
+export async function removeUserGivenInteraction(
+  item: UserInteractionViewItem
+): Promise<boolean> {
+  if (!item || !item.id) return false;
+
+  try {
+    if (item.type === 'knows' || item.type === 'fans') {
+      const { error } = await supabase
+        .from('users_actitud')
+        .delete()
+        .eq('id', item.id);
+
+      if (error) {
+        // Podría provenir de professor_interactions
+        await supabase.from('professor_interactions').delete().eq('id', item.id);
+      } else if (item.targetId) {
+        // Actualizar contadores acumulados
+        const counts = await getUserActitudCounts(item.targetId);
+        await syncUserTableCounts(item.targetId, counts.knowCount, counts.fanCount);
+      }
+      return true;
+    } else if (item.type === 'ratings') {
+      const { error } = await supabase
+        .from('user_reseñas')
+        .delete()
+        .eq('id', item.id);
+
+      return !error;
+    }
+    return false;
+  } catch (e) {
+    console.error('Error retirando interacción:', e);
+    return false;
+  }
+}
+

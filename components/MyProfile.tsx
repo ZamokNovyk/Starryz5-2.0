@@ -41,12 +41,9 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { 
-  getUserInteractions, 
-  removeUserInteraction, 
-  UserInteractionItem,
-  getUserProfessorSubscriptions,
-  removeProfessorNotificationSubscription,
-  UserProfessorSubscriptionItem
+  getUserProfessorSubscriptions, 
+  removeProfessorNotificationSubscription, 
+  UserProfessorSubscriptionItem 
 } from '@/src/lib/professors';
 import { 
   getUserStudentSubscriptions, 
@@ -62,7 +59,14 @@ import {
   StudentLoveMessage,
   submitStudentVote
 } from '@/src/lib/students';
-import { getUserActitudCounts, getUserActitudVotes, toggleUserActitudVote } from '@/src/lib/userActitud';
+import { 
+  getUserActitudCounts, 
+  getUserActitudVotes, 
+  toggleUserActitudVote,
+  getUserGivenInteractions,
+  removeUserGivenInteraction,
+  UserInteractionViewItem
+} from '@/src/lib/userActitud';
 import { getUserCrushesCount, hasUserCrushed, toggleUserCrush } from '@/src/lib/userCrushes';
 import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
@@ -161,10 +165,10 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [adminMetrics, setAdminMetrics] = useState<AdminDashboardData | null>(null);
   const [loadingAdminMetrics, setLoadingAdminMetrics] = useState(false);
 
-  // Interacciones State
-  const [interactions, setInteractions] = useState<UserInteractionItem[]>([]);
+  // Interacciones State (3 subtags: Yo te conozco, Fans, Calificaciones)
+  const [interactions, setInteractions] = useState<UserInteractionViewItem[]>([]);
   const [loadingInteractions, setLoadingInteractions] = useState(false);
-  const [interactionFilter, setInteractionFilter] = useState<'crush' | 'fan' | 'knows'>('crush');
+  const [interactionFilter, setInteractionFilter] = useState<'knows' | 'fans' | 'ratings'>('knows');
   const [interactionsError, setInteractionsError] = useState('');
 
   // Suscripciones a Notificaciones State
@@ -821,7 +825,13 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     try {
       setLoadingInteractions(true);
       setInteractionsError('');
-      const items = await getUserInteractions(targetUid);
+      const candidateUids = Array.from(new Set([
+        targetUid,
+        dbUser?.id,
+        user?.uid,
+        dbUser?.firebase_uid,
+      ].filter(Boolean) as string[]));
+      const items = await getUserGivenInteractions(candidateUids);
       setInteractions(items);
     } catch (err: any) {
       console.error('Error al cargar interacciones:', err);
@@ -835,9 +845,9 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     if (profileTab === 'interactions') {
       loadInteractions();
     }
-  }, [profileTab, uid, user?.uid]);
+  }, [profileTab, uid, user?.uid, dbUser?.id]);
 
-  const handleRemoveInteraction = async (item: UserInteractionItem) => {
+  const handleRemoveInteraction = async (item: UserInteractionViewItem) => {
     const targetUid = uid || user?.uid;
     if (!targetUid) return;
 
@@ -845,7 +855,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     setInteractions(prev => prev.filter(i => i.id !== item.id));
 
     try {
-      const ok = await removeUserInteraction(targetUid, item.professorId, item.type);
+      const ok = await removeUserGivenInteraction(item);
       if (!ok) {
         // Recargar en caso de error
         loadInteractions();
@@ -1297,7 +1307,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           
           {/* Métricas Superiores de Reputación (Yo te conozco / Fans en la tabla 'users_actitud') */}
           <div className="grid grid-cols-2 gap-3 max-w-md bg-[#070707] border border-zinc-800/80 rounded-2xl p-3 sm:p-4 shadow-lg animate-in fade-in duration-300">
-            {/* Yo te conozco */}
+            {/* Seguir / Siguiendo */}
             <button
               type="button"
               disabled={isSelfProfile}
@@ -1309,12 +1319,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     ? 'border-blue-500 bg-blue-500/15 shadow-[0_0_15px_rgba(59,130,246,0.25)] cursor-pointer active:scale-95'
                     : 'border-blue-500/20 hover:border-blue-500/40 hover:bg-[#121212] cursor-pointer active:scale-95'
               }`}
-              title={isSelfProfile ? 'Tus votos acumulados de la comunidad' : 'Clic para indicar que conoces a este usuario'}
+              title={isSelfProfile ? 'Tus seguidores acumulados de la comunidad' : currentVote === 'yo_te_conozco' ? 'Dejar de seguir' : 'Clic para seguir a este usuario'}
             >
               <div className="flex items-center justify-center gap-1.5 text-blue-400">
                 <Users className="w-4 h-4" />
                 <span className="text-[10px] font-black uppercase tracking-wider">
-                  {currentVote === 'yo_te_conozco' ? '✓ Yo te conozco' : 'Yo te conozco'}
+                  {isSelfProfile ? 'Seguidores' : currentVote === 'yo_te_conozco' ? 'Siguiendo' : 'Seguir'}
                 </span>
               </div>
               <div className="text-xl sm:text-2xl font-black text-white">
@@ -2159,20 +2169,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
           ) : profileTab === 'interactions' ? (
             // PESTAÑA MIS INTERACCIONES
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
-                    <Heart className="w-5 h-5 text-pink-500 fill-pink-500/30" /> {isOwnProfile ? 'Mis Votos e Interacciones' : 'Interacciones del Usuario'}
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    {isOwnProfile 
-                      ? 'Administra tus flechazos confidenciales (Crushes), votos de Fan y reconocimientos de la comunidad.'
-                      : 'Interacciones y votos comunitarios registrados por este usuario en Supabase.'}
-                  </p>
-                </div>
-              </div>
-
+            <div className="space-y-4 animate-in fade-in duration-300">
               {interactionsError && (
                 <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
                   <AlertCircle className="w-4 h-4" />
@@ -2180,86 +2177,92 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </div>
               )}
 
-              {/* Subtags / Filtros por Categoría */}
-              {interactions.length > 0 && (
-                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-full pb-1">
-                  <button
-                    type="button"
-                    onClick={() => setInteractionFilter('crush')}
-                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                      interactionFilter === 'crush'
-                        ? 'bg-pink-500 text-white font-extrabold shadow-[0_0_15px_rgba(236,72,153,0.35)]'
-                        : 'bg-[#121212] text-pink-400 hover:text-pink-300 border border-pink-500/20 hover:bg-pink-950/20'
-                    }`}
-                  >
-                    <Heart className="w-3 h-3 fill-current" />
-                    <span>Crushes ({interactions.filter(i => i.type === 'crush').length})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInteractionFilter('fan')}
-                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                      interactionFilter === 'fan'
-                        ? 'bg-amber-500 text-black font-extrabold shadow-[0_0_15px_rgba(245,158,11,0.35)]'
-                        : 'bg-[#121212] text-amber-400 hover:text-amber-300 border border-amber-500/20 hover:bg-amber-950/20'
-                    }`}
-                  >
-                    <Star className="w-3 h-3 fill-current" />
-                    <span>Fans ({interactions.filter(i => i.type === 'fan').length})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInteractionFilter('knows')}
-                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                      interactionFilter === 'knows'
-                        ? 'bg-blue-500 text-white font-extrabold shadow-[0_0_15px_rgba(59,130,246,0.35)]'
-                        : 'bg-[#121212] text-blue-400 hover:text-blue-300 border border-blue-500/20 hover:bg-blue-950/20'
-                    }`}
-                  >
-                    <UserCheck className="w-3 h-3" />
-                    <span>Yo te conozco ({interactions.filter(i => i.type === 'knows').length})</span>
-                  </button>
-                </div>
-              )}
+              {/* 3 Subtags solicitadas: Seguidos, Fans y Calificaciones */}
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-full pb-1">
+                <button
+                  type="button"
+                  onClick={() => setInteractionFilter('knows')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                    interactionFilter === 'knows'
+                      ? 'bg-blue-600 text-white font-extrabold shadow-[0_0_15px_rgba(59,130,246,0.35)] ring-1 ring-blue-400'
+                      : 'bg-[#121212] text-blue-400 hover:text-blue-300 border border-blue-500/20 hover:bg-blue-950/20'
+                  }`}
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Seguidos</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
+                    interactionFilter === 'knows' ? 'bg-black text-blue-300' : 'bg-blue-500/20 text-blue-300'
+                  }`}>
+                    {interactions.filter(i => i.type === 'knows').length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setInteractionFilter('fans')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                    interactionFilter === 'fans'
+                      ? 'bg-pink-600 text-white font-extrabold shadow-[0_0_15px_rgba(236,72,153,0.35)] ring-1 ring-pink-400'
+                      : 'bg-[#121212] text-pink-400 hover:text-pink-300 border border-pink-500/20 hover:bg-pink-950/20'
+                  }`}
+                >
+                  <Heart className="w-3.5 h-3.5 fill-current" />
+                  <span>Fans</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
+                    interactionFilter === 'fans' ? 'bg-black text-pink-300' : 'bg-pink-500/20 text-pink-300'
+                  }`}>
+                    {interactions.filter(i => i.type === 'fans').length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setInteractionFilter('ratings')}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                    interactionFilter === 'ratings'
+                      ? 'bg-[#eab308] text-black font-extrabold shadow-[0_0_15px_rgba(234,179,8,0.35)] ring-1 ring-amber-300'
+                      : 'bg-[#121212] text-[#eab308] hover:text-amber-300 border border-[#eab308]/20 hover:bg-amber-950/20'
+                  }`}
+                >
+                  <Star className="w-3.5 h-3.5 fill-current" />
+                  <span>Calificaciones</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
+                    interactionFilter === 'ratings' ? 'bg-black text-[#eab308]' : 'bg-amber-500/20 text-amber-300'
+                  }`}>
+                    {interactions.filter(i => i.type === 'ratings').length}
+                  </span>
+                </button>
+              </div>
 
               {loadingInteractions ? (
                 <div className="py-12 flex flex-col items-center justify-center space-y-3">
                   <Loader2 className="w-8 h-8 animate-spin text-[#eab308]" />
                   <p className="text-xs text-zinc-500 font-medium">Cargando tus interacciones de Supabase...</p>
                 </div>
-              ) : interactions.length === 0 ? (
-                <div className="p-8 rounded-2xl border border-dashed border-zinc-800 text-center space-y-3 bg-[#050505]">
-                  <div className="inline-flex p-3.5 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 mb-1">
-                    <Heart className="w-7 h-7 fill-pink-500/30 animate-pulse" />
-                  </div>
-                  <h4 className="text-sm font-black text-white uppercase tracking-wider">Sin interacciones registradas</h4>
-                  <p className="text-xs text-zinc-500 max-w-sm mx-auto leading-relaxed">
-                    Aún no has marcado a ningún profesor como tu Crush o Fan. ¡Visita los perfiles del campus para interactuar y enviar tus flechazos confidenciales!
-                  </p>
-                  <button
-                    type="button"
-                    onClick={onBackToHome}
-                    className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-[11px] uppercase tracking-wider transition-all cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Explorar Profesores</span>
-                  </button>
-                </div>
               ) : interactions.filter(i => i.type === interactionFilter).length === 0 ? (
-                <div className="p-8 rounded-2xl border border-dashed border-zinc-800/80 text-center space-y-2 bg-[#080808]">
-                  <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider">
-                    {interactionFilter === 'crush' 
-                      ? 'Sin flechazos (Crushes) registrados' 
-                      : interactionFilter === 'fan'
+                <div className="p-8 rounded-2xl border border-dashed border-zinc-800/80 text-center space-y-3 bg-[#080808]">
+                  <div className="inline-flex p-3 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-500 mb-1">
+                    {interactionFilter === 'knows' ? (
+                      <UserCheck className="w-6 h-6 text-blue-400" />
+                    ) : interactionFilter === 'fans' ? (
+                      <Heart className="w-6 h-6 text-pink-400" />
+                    ) : (
+                      <Star className="w-6 h-6 text-[#eab308]" />
+                    )}
+                  </div>
+                  <h4 className="text-sm font-black text-white uppercase tracking-wider">
+                    {interactionFilter === 'knows'
+                      ? 'Sin estudiantes seguidos'
+                      : interactionFilter === 'fans'
                       ? 'Sin votos de Fan registrados'
-                      : 'Sin registros de "Yo te conozco"'}
-                  </p>
-                  <p className="text-[11px] text-zinc-500">
-                    {interactionFilter === 'crush'
-                      ? 'No has enviado ningún flechazo a profesores todavía.'
-                      : interactionFilter === 'fan'
-                      ? 'No has votado como Fan de ningún profesor todavía.'
-                      : 'No has marcado a ningún profesor con "Yo te conozco" todavía.'}
+                      : 'Sin calificaciones registradas'}
+                  </h4>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto leading-relaxed">
+                    {interactionFilter === 'knows'
+                      ? 'Aún no sigues a ningún estudiante. Explora los perfiles del campus y pulsa en "Seguir".'
+                      : interactionFilter === 'fans'
+                      ? 'Aún no te has hecho Fan de ningún estudiante en la comunidad de Starryz.'
+                      : 'Aún no has calificado a ningún estudiante. ¡Visita perfiles del campus para otorgar estrellas de reputación!'}
                   </p>
                 </div>
               ) : (
@@ -2267,9 +2270,9 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   {interactions
                     .filter(item => item.type === interactionFilter)
                     .map((item) => {
-                      const isCrush = item.type === 'crush';
-                      const isFan = item.type === 'fan';
                       const isKnows = item.type === 'knows';
+                      const isFan = item.type === 'fans';
+                      const isRating = item.type === 'ratings';
 
                       return (
                         <div
@@ -2279,59 +2282,80 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                           <div className="flex items-start gap-3.5">
                             {/* Avatar */}
                             <div 
-                              onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                              onClick={() => navigateTo(`/perfil/${item.targetId}`)}
                               className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm uppercase flex-shrink-0 cursor-pointer overflow-hidden transition-all ${
-                                isCrush 
-                                  ? 'bg-pink-950/30 border border-pink-500/40 text-pink-400 group-hover:border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.15)]' 
+                                isKnows 
+                                    ? 'bg-blue-950/30 border border-blue-500/40 text-blue-400 group-hover:border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.15)]' 
                                   : isFan
-                                  ? 'bg-amber-950/30 border border-amber-500/40 text-amber-400 group-hover:border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
-                                  : 'bg-blue-950/30 border border-blue-500/40 text-blue-400 group-hover:border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.15)]'
+                                  ? 'bg-pink-950/30 border border-pink-500/40 text-pink-400 group-hover:border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.15)]'
+                                  : 'bg-amber-950/30 border border-amber-500/40 text-amber-400 group-hover:border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
                               }`}
                             >
-                              {item.professorAvatar ? (
+                              {item.targetAvatar ? (
                                 <img
-                                  src={item.professorAvatar}
-                                  alt={item.professorName}
+                                  src={item.targetAvatar}
+                                  alt={item.targetName}
                                   className="w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
                                 />
                               ) : (
-                                item.professorName.charAt(0)
+                                item.targetName.charAt(0).toUpperCase()
                               )}
                             </div>
 
-                            {/* Nombre y Cargo */}
+                            {/* Nombre, Badge e Información */}
                             <div 
-                              onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                              onClick={() => navigateTo(`/perfil/${item.targetId}`)}
                               className="min-w-0 flex-1 cursor-pointer"
                             >
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                {isCrush && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
-                                    <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
-                                    CRUSH
-                                  </span>
-                                )}
-                                {isFan && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
-                                    <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
-                                    FAN
-                                  </span>
-                                )}
                                 {isKnows && (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black uppercase tracking-wider">
                                     <UserCheck className="w-2.5 h-2.5 text-blue-400" />
-                                    YO TE CONOZCO
+                                    SIGUIENDO
+                                  </span>
+                                )}
+                                {isFan && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
+                                    <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
+                                    FAN
+                                  </span>
+                                )}
+                                {isRating && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-[#eab308] text-[9px] font-black uppercase tracking-wider">
+                                    <Star className="w-2.5 h-2.5 fill-[#eab308] text-[#eab308]" />
+                                    CALIFICASTE: {item.starsGiven} {item.starsGiven === 1 ? 'ESTRELLA' : 'ESTRELLAS'}
                                   </span>
                                 )}
                               </div>
 
-                              <h4 className="text-xs sm:text-sm font-black text-white truncate group-hover:text-[#eab308] transition-colors uppercase tracking-tight mt-1.5">
-                                {item.professorName}
-                              </h4>
-                              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-                                {item.professorRole || 'Profesor'}
-                              </p>
+                              <div className="flex items-center gap-1.5 mt-1.5">
+                                <h4 
+                                  className="text-xs sm:text-sm font-black text-white truncate group-hover:text-[#eab308] transition-colors uppercase tracking-tight"
+                                  title={item.targetName}
+                                >
+                                  {item.targetName}
+                                </h4>
+                                {item.targetGender && (
+                                  <span className={`text-xs font-black ${item.targetGender === 'male' || item.targetGender === 'hombre' ? 'text-blue-400' : 'text-pink-400'}`}>
+                                    {item.targetGender === 'male' || item.targetGender === 'hombre' ? '♂' : '♀'}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-zinc-500 font-medium flex-wrap">
+                                {item.targetCountryCode && (
+                                  <img
+                                    src={getFlagUrl(item.targetCountryCode, 'w20')}
+                                    alt={item.targetCountry || 'País'}
+                                    className="w-3.5 h-2.5 object-cover rounded-2xs inline-block"
+                                    loading="lazy"
+                                  />
+                                )}
+                                <span>{item.targetSubtitle}</span>
+                                <span>•</span>
+                                <span>{new Date(item.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                              </div>
                             </div>
                           </div>
 
@@ -2339,7 +2363,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                           <div className="flex items-center justify-between pt-3 mt-3 border-t border-zinc-800/60">
                             <button
                               type="button"
-                              onClick={() => navigateTo(`/profesores/${item.professorId}`)}
+                              onClick={() => navigateTo(`/perfil/${item.targetId}`)}
                               className="inline-flex items-center gap-1 text-[11px] font-black text-zinc-400 hover:text-white transition-colors cursor-pointer"
                             >
                               <span>Ver Perfil</span>
@@ -2353,18 +2377,10 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                                   e.stopPropagation();
                                   handleRemoveInteraction(item);
                                 }}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer border ${
-                                  isCrush
-                                    ? 'bg-rose-950/20 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-300 border-rose-900/30 hover:border-rose-700/50'
-                                    : 'bg-red-950/20 hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border-red-900/30 hover:border-red-700/50'
-                                }`}
-                                title={isCrush ? 'Retirar flechazo' : 'Quitar voto de interacción'}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer border bg-red-950/20 hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border-red-900/30 hover:border-red-700/50"
+                                title="Quitar interacción"
                               >
-                                {isCrush ? (
-                                  <HeartCrack className="w-3 h-3 text-pink-400" />
-                                ) : (
-                                  <Trash2 className="w-3 h-3 text-red-400" />
-                                )}
+                                <Trash2 className="w-3 h-3 text-red-400" />
                                 <span>Quitar</span>
                               </button>
                             )}

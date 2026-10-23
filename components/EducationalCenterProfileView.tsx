@@ -940,7 +940,7 @@ export default function EducationalCenterProfileView({
     { id: 'views_desc', label: 'Más vistos' },
     { id: 'views_asc', label: 'Menos vistos' },
     { id: 'fans_desc', label: 'Más Fans' },
-    { id: 'knows_desc', label: 'Más "Yo te conozco"' },
+    { id: 'knows_desc', label: 'Más Seguidos' },
     { id: 'crushes_desc', label: 'Más Crushes' },
   ];
 
@@ -1434,7 +1434,7 @@ export default function EducationalCenterProfileView({
                           <Heart className="w-3.5 h-3.5 text-pink-500 fill-pink-500" />
                           <span>{p.fans}</span>
                         </span>
-                        <span className="flex items-center gap-1.5 text-zinc-400" title={`${p.knows} Yo te conozco`}>
+                        <span className="flex items-center gap-1.5 text-zinc-400" title={`${p.knows} Seguidores`}>
                           <Users className="w-3.5 h-3.5 text-blue-400 fill-blue-400/20" />
                           <span>{p.knows}</span>
                         </span>
@@ -1552,7 +1552,7 @@ export default function EducationalCenterProfileView({
                         <Heart className="w-3 h-3 text-pink-500 fill-pink-500" />
                         <span>{p.fans}</span>
                       </span>
-                      <span className="flex items-center gap-1 text-zinc-400" title={`${p.knows} Yo te conozco`}>
+                      <span className="flex items-center gap-1 text-zinc-400" title={`${p.knows} Seguidores`}>
                         <Users className="w-3 h-3 text-blue-400 fill-blue-400/20" />
                         <span>{p.knows}</span>
                       </span>

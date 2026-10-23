@@ -289,10 +289,10 @@ export default function StudentNotificationModal({
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                    "Yo te conozco"
+                    "Seguidores y Seguimientos"
                   </h4>
                   <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Avisarme cuando otros estudiantes del campus confirmen que conocen a este estudiante.
+                    Avisarme cuando otros estudiantes del campus comiencen a seguir a este estudiante.
                   </p>
                 </div>
               </div>

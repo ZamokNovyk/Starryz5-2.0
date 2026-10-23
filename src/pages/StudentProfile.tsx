@@ -1092,7 +1092,7 @@ export default function StudentProfile({
 
       {/* METRIC CARDS (Yo te conozco / Fan - Diseñados en grilla de 2 columnas) */}
       <div className="grid grid-cols-2 gap-4">
-        {/* Yo te conozco */}
+        {/* Seguir / Siguiendo */}
         <div 
           onClick={() => !isOwnProfile && handleInteractionToggle('knows')}
           className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all select-none duration-200 ${
@@ -1102,7 +1102,7 @@ export default function StudentProfile({
               ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_15px_rgba(59,130,246,0.2)] cursor-pointer active:scale-[0.98]' 
               : 'border-zinc-800/80 hover:border-blue-500/40 hover:bg-[#121212] cursor-pointer active:scale-[0.98]'
           }`}
-          title={isOwnProfile ? 'Este es tu propio perfil' : undefined}
+          title={isOwnProfile ? 'Tus seguidores en la comunidad' : hasVotedKnow ? 'Dejar de seguir' : 'Seguir a este estudiante'}
         >
           <div className="flex justify-center mb-1">
             <Users className={`w-6 h-6 transition-transform text-blue-400 ${hasVotedKnow ? 'scale-110 text-blue-400' : 'text-blue-400/80'}`} />
@@ -1111,7 +1111,7 @@ export default function StudentProfile({
             {knowCount}
           </span>
           <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedKnow ? 'text-blue-400' : 'text-zinc-400'}`}>
-            {isOwnProfile ? 'Yo te conozco (Tu perfil)' : hasVotedKnow ? '✓ Yo te conozco' : 'Yo te conozco'}
+            {isOwnProfile ? 'Seguidores (Tu perfil)' : hasVotedKnow ? 'Siguiendo' : 'Seguir'}
           </span>
         </div>
 

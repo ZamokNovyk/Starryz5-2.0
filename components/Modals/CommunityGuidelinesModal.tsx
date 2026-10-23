@@ -84,7 +84,7 @@ export default function CommunityGuidelinesModal({
               <div className="p-3.5 rounded-xl bg-[#131418] border border-emerald-500/20 space-y-1">
                 <span className="font-bold text-white text-xs block">✅ Interacciones Sanas</span>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Dar Crushes, Fan y "Yo te conozco" a tus profesores o compañeros como muestra de reconocimiento.
+                  Dar Crushes, Fan y Seguir a tus profesores o compañeros como muestra de reconocimiento.
                 </p>
               </div>
 

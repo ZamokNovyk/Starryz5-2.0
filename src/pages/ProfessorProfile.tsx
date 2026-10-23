@@ -915,7 +915,7 @@ export default function ProfessorProfile({
             {knowCount}
           </span>
           <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedKnow ? 'text-blue-400' : 'text-zinc-400'}`}>
-            {hasVotedKnow ? '✓ Yo te conozco' : 'Yo te conozco'}
+            {hasVotedKnow ? 'Siguiendo' : 'Seguir'}
           </span>
         </div>
 

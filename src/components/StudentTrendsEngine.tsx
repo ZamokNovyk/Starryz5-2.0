@@ -80,7 +80,7 @@ const METRICS_CONFIG: Record<MetricType, MetricConfig> = {
   },
   knows: {
     id: 'knows',
-    label: 'Yo Te Conozco',
+    label: 'Seguidores',
     icon: Users,
     color: '#3b82f6', // blue
     fillColor: 'url(#knows-gradient)',
