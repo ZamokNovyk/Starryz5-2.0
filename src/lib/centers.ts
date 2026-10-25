@@ -77,8 +77,32 @@ export async function getEducationalCenters(): Promise<EducationalCenter[]> {
 
 /**
  * Elimina un centro educativo de la tabla 'educational_centers' en Supabase.
+ * Utiliza la función RPC con permisos de administrador 'admin_delete_educational_center'
+ * para respetar las políticas de RLS que bloquean borrados no autorizados desde la consola pública.
  */
-export async function deleteEducationalCenter(centerId: string): Promise<void> {
+export async function deleteEducationalCenter(centerId: string, adminEmail?: string): Promise<void> {
+  // 1. Intentar borrado seguro mediante la función RPC protegida
+  try {
+    const { data: rpcSuccess, error: rpcError } = await supabase.rpc('admin_delete_educational_center', {
+      p_center_id: centerId,
+      p_admin_email: adminEmail || null
+    });
+
+    if (!rpcError && rpcSuccess === true) {
+      return;
+    }
+
+    if (rpcError && rpcError.message && rpcError.message.includes('Acceso denegado')) {
+      throw new Error(rpcError.message);
+    }
+  } catch (rpcErr: any) {
+    if (rpcErr?.message?.includes('Acceso denegado')) {
+      throw rpcErr;
+    }
+    // Si la función aún no existe en Supabase (código 42883), procede al fallback
+  }
+
+  // 2. Fallback directo a la tabla
   const { error } = await supabase
     .from('educational_centers')
     .delete()

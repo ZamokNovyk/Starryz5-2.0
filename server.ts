@@ -2,12 +2,16 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
+import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
 
-// Always enforce the exact verified Backblaze B2 credentials
-const B2_KEY_ID = '0056bac9fb621d40000000001';
-const B2_APPLICATION_KEY = 'K00575GnrUfEa3rzdIEkV0NDBfhDcx0';
-const B2_BUCKET_ID = 'a64b1a7cf94f0b26a2110d14';
-const B2_BUCKET_NAME = 'starryz5';
+// Cargar variables de entorno locales desde .env de forma segura
+dotenv.config();
+
+const B2_KEY_ID = process.env.B2_KEY_ID || '';
+const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY || '';
+const B2_BUCKET_ID = process.env.B2_BUCKET_ID || '';
+const B2_BUCKET_NAME = process.env.B2_BUCKET_NAME || 'starryz5';
 
 // Cache B2 auth token in memory
 let cachedAuth: {
@@ -18,6 +22,10 @@ let cachedAuth: {
 } | null = null;
 
 async function getB2Auth(forceRefresh = false) {
+  if (!B2_KEY_ID || !B2_APPLICATION_KEY) {
+    throw new Error('Credenciales de Backblaze B2 no configuradas en las variables de entorno (B2_KEY_ID / B2_APPLICATION_KEY).');
+  }
+
   if (!forceRefresh && cachedAuth && Date.now() < cachedAuth.expiresAt) {
     return cachedAuth;
   }
@@ -51,44 +59,114 @@ async function getB2Auth(forceRefresh = false) {
   return cachedAuth;
 }
 
+/**
+ * Valida el token de identidad OAuth (Google) si está presente
+ */
+async function verifyAuthToken(authHeader?: string): Promise<{ email?: string; valid: boolean }> {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return { valid: false };
+  }
+  const token = authHeader.substring(7).trim();
+  if (!token) return { valid: false };
+
+  try {
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return { email: data.email, valid: true };
+    }
+  } catch (err) {
+    console.warn('Error verificando token de Google:', err);
+  }
+  return { valid: false };
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // CORS middleware for starryz5.com and any client origin
+  // Dominios autorizados para CORS
+  const ALLOWED_ORIGIN_PATTERNS = [
+    'https://starryz5.com',
+    'https://www.starryz5.com',
+    'https://media.starryz5.com',
+    'localhost',
+    '127.0.0.1',
+    '.run.app',
+    '.pages.dev'
+  ];
+
+  // CORS seguro con validación de origen
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin;
+    let allowed = false;
+
+    if (!origin) {
+      allowed = true;
+    } else {
+      allowed = ALLOWED_ORIGIN_PATTERNS.some(pattern => 
+        pattern.startsWith('https://') ? origin === pattern : origin.includes(pattern)
+      );
+    }
+
+    if (allowed && origin) {
+      res.header('Access-Control-Allow-Origin', origin);
+    } else if (!origin) {
+      res.header('Access-Control-Allow-Origin', '*');
+    }
+
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-User-Id');
+    res.header('Access-Control-Allow-Credentials', 'true');
+
     if (req.method === 'OPTIONS') {
       return res.sendStatus(204);
     }
     next();
   });
 
-  // JSON payload parser for base64 compressed images (limit 10MB)
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  // Rate Limiting general para rutas API: Máximo 200 peticiones por ventana de 15 min por IP
+  const generalApiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiadas solicitudes al servidor. Por favor intenta más tarde.' },
+  });
+  app.use('/api/', generalApiLimiter);
+
+  // Rate Limiting estricto para subida de fotos: Máximo 15 subidas cada 15 min por IP
+  const uploadAvatarLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 15,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Límite de subidas de avatar alcanzado. Por favor espera unos minutos antes de volver a intentar.' },
+  });
+
+  // JSON payload parser para imágenes base64 (límite estricto de 2MB en body parser)
+  app.use(express.json({ limit: '2mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // POST /api/upload-avatar - Subida de avatar a Backblaze B2 con eliminación automática de foto anterior
-  app.post('/api/upload-avatar', async (req, res) => {
+  // POST /api/upload-avatar - Subida de avatar a Backblaze B2 con verificación de seguridad
+  app.post('/api/upload-avatar', uploadAvatarLimiter, async (req, res) => {
     try {
-      const { imageBase64, contentType, userId, previousPhotoUrl, fileName: customFileName } = req.body;
+      const { imageBase64, contentType, userId, userEmail, fileName: customFileName } = req.body;
 
       if (!imageBase64) {
         return res.status(400).json({ error: 'imageBase64 es obligatorio' });
       }
 
-      // Validate base64 data
+      // Validar payload base64
       const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
       const buffer = Buffer.from(base64Data, 'base64');
 
-      // Check size limit: 105 KB max
+      // Validar límite estricto de peso: 105 KB máximo
       const sizeBytes = buffer.length;
       if (sizeBytes > 105 * 1024) {
         return res.status(400).json({ 
@@ -96,13 +174,29 @@ async function startServer() {
         });
       }
 
+      // Sanitizar userId para evitar ataques de inyección o path traversal
+      const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '');
+
+      // Validación de identidad: si el usuario no es anónimo, verificar token de autenticación
+      const authHeader = req.headers.authorization;
+      const isAnonymousUser = cleanUserId.startsWith('anon_');
+
+      if (!isAnonymousUser) {
+        const authCheck = await verifyAuthToken(authHeader);
+        // Si se envió un token, asegurarse de que el email coincide
+        if (authCheck.valid && authCheck.email) {
+          if (userEmail && authCheck.email.toLowerCase() !== userEmail.toLowerCase()) {
+            return res.status(403).json({ error: 'Token de sesión no coincide con el usuario solicitado.' });
+          }
+        }
+      }
+
       const mime = contentType || 'image/webp';
       const ext = mime.includes('webp') ? 'webp' : 'jpg';
-      const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '');
       const timestamp = Date.now();
       const fileName = customFileName || `avatars/${cleanUserId}-${timestamp}.${ext}`;
 
-      // 1. Authorize with B2 (retry once if token expired)
+      // 1. Autorizar con B2 (reintenta una vez si el token expiró)
       let auth;
       try {
         auth = await getB2Auth();
@@ -110,12 +204,15 @@ async function startServer() {
         auth = await getB2Auth(true);
       }
 
-      // 2. Get upload URL for bucket
+      if (!B2_BUCKET_ID) {
+        throw new Error('B2_BUCKET_ID no configurado en variables de entorno.');
+      }
+
+      // 2. Obtener URL de subida para el bucket
       let uploadUrlRes = await fetch(`${auth.apiUrl}/b2api/v3/b2_get_upload_url?bucketId=${B2_BUCKET_ID}`, {
         headers: { Authorization: auth.token }
       });
 
-      // If token expired (401), force refresh auth and try once more
       if (uploadUrlRes.status === 401) {
         auth = await getB2Auth(true);
         uploadUrlRes = await fetch(`${auth.apiUrl}/b2api/v3/b2_get_upload_url?bucketId=${B2_BUCKET_ID}`, {
@@ -130,7 +227,7 @@ async function startServer() {
 
       const uploadUrlData = await uploadUrlRes.json();
 
-      // 3. Upload file to Backblaze B2
+      // 3. Subir archivo a Backblaze B2
       const uploadRes = await fetch(uploadUrlData.uploadUrl, {
         method: 'POST',
         headers: {
@@ -150,7 +247,7 @@ async function startServer() {
 
       const uploadResult = await uploadRes.json();
 
-      // 4. Eliminación automática de fotos anteriores del usuario para ahorrar almacenamiento
+      // 4. Limpieza automática de fotos viejas del usuario para ahorrar almacenamiento
       try {
         const prefix = `avatars/${cleanUserId}-`;
         const listRes = await fetch(

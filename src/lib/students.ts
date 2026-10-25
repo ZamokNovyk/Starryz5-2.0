@@ -61,17 +61,8 @@ function toSlug(first: string, last: string): string {
     .replace(/^\.|\.$/g, ''); // trim dots from start/end
 }
 
-// Registro oficial de DNI para estudiantes verificados
-const OFFICIAL_STUDENT_DNI_REGISTRY: Record<string, string> = {
-  'daniel.gustavo.castillo.ramirez': '60036463',
-  'daniel-gustavo-castillo-ramirez': '60036463',
-};
-
 export function getExpectedStudentDni(studentIdOrSlug: string): string | null {
   const cleanId = (studentIdOrSlug || '').toLowerCase().trim();
-  if (OFFICIAL_STUDENT_DNI_REGISTRY[cleanId]) {
-    return OFFICIAL_STUDENT_DNI_REGISTRY[cleanId];
-  }
   if (typeof window !== 'undefined') {
     try {
       const stored = localStorage.getItem(`student_dni_${cleanId}`);

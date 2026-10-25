@@ -5,7 +5,7 @@
  */
 
 import { supabase } from './supabase';
-import { updateAuthUserProfile, getStoredUser } from './auth';
+import { updateAuthUserProfile, getStoredUser, getStoredToken } from './auth';
 import { CompressionResult } from './imageCompressor';
 
 export interface UploadAvatarResponse {
@@ -26,10 +26,14 @@ export async function uploadAvatarToBackblaze(
   compressed: CompressionResult,
   previousPhotoUrl?: string | null
 ): Promise<UploadAvatarResponse> {
+  const currentUser = getStoredUser();
+  const token = getStoredToken();
+
   const payload = {
     imageBase64: compressed.base64,
     contentType: compressed.format,
     userId,
+    userEmail: currentUser?.email || null,
     previousPhotoUrl: previousPhotoUrl || null,
   };
 
@@ -48,11 +52,19 @@ export async function uploadAvatarToBackblaze(
 
   for (const endpoint of endpointsToTry) {
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      if (userId) {
+        headers['X-User-Id'] = userId;
+      }
+
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: payloadString,
       });
 

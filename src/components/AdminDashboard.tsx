@@ -124,7 +124,7 @@ export default function AdminDashboard({ onBack, onNavigate }: AdminDashboardPro
     if (!centerToDelete) return;
     try {
       setIsDeletingCenter(true);
-      await deleteEducationalCenter(centerToDelete.id);
+      await deleteEducationalCenter(centerToDelete.id, user?.email || undefined);
       setCenters(prev => prev.filter(c => c.id !== centerToDelete.id));
       setToastMessage('Centro educativo y todo su contenido eliminado correctamente');
       setTimeout(() => setToastMessage(null), 4000);

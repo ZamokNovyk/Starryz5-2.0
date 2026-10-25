@@ -44,9 +44,7 @@ import BookmarkButton from '@/components/BookmarkButton';
 import ProfessorNotificationModal from '@/components/Modals/ProfessorNotificationModal';
 import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 import { shareContent } from '@/src/lib/share';
-import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography, stripBiographyMetadata } from '@/src/lib/profileReports';
-import CommunityVoteBanner from '@/components/CommunityVoteBanner';
-import ReportProfileModal from '@/components/Modals/ReportProfileModal';
+import { stripBiographyMetadata } from '@/src/lib/profileReports';
 
 interface ProfessorProfileProps {
   slug: string;
@@ -130,10 +128,6 @@ export default function ProfessorProfile({
   // Views Count State
   const [viewsCount, setViewsCount] = useState(0);
 
-  // Moderation / Community Report States
-  const [activeReport, setActiveReport] = useState<ProfileReport | null>(null);
-  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-
   // Wiki Editing States
   const [isEditingWiki, setIsEditingWiki] = useState(false);
   const [wikiAvatarUrl, setWikiAvatarUrl] = useState('');
@@ -190,14 +184,6 @@ export default function ProfessorProfile({
           const crushStatus = await getProfessorCrushStatus(data.id || slug, user?.uid);
           setCrushCount(crushStatus.count);
           setHasCrushed(crushStatus.hasCrushed);
-
-          // Cargar reporte activo de moderación si existe
-          try {
-            const rep = await getActiveProfileReport(data.id || slug, 'professor');
-            setActiveReport(rep);
-          } catch (rErr) {
-            console.debug('Error consultando reporte activo de profesor:', rErr);
-          }
 
           // Cargar interacciones, votos y suscripción del usuario si está logueado
           if (user) {
@@ -347,39 +333,8 @@ export default function ProfessorProfile({
           if (payload.eventType === 'DELETE' && payload.old && (payload.old as any).id === profId) {
             onBack();
           } else if (payload.new && (payload.new as any).id === profId) {
-            const bio = (payload.new as any).biography || '';
-            const fullName = (payload.new as any).nombre_completo || '';
-            if (bio.includes('__EXPELLED_BY_COMMUNITY__') || fullName.includes('[EXPULSADO')) {
-              onBack();
-              return;
-            }
-            try {
-              const rep = await getActiveProfileReport(profId, 'professor');
-              setActiveReport(rep);
-              const updatedData = payload.new as any;
-              setProfessor(prev => prev ? { ...prev, ...updatedData } : prev);
-            } catch (err) {
-              console.error('Error actualizando reporte de profesor en tiempo real:', err);
-            }
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'profile_reports',
-        },
-        async (payload) => {
-          const repTargetId = (payload.new as any)?.target_id || (payload.old as any)?.target_id;
-          if (repTargetId === profId) {
-            try {
-              const rep = await getActiveProfileReport(profId, 'professor');
-              setActiveReport(rep);
-            } catch (err) {
-              console.error('Error refrescando profile_reports para profesor:', err);
-            }
+            const updatedData = payload.new as any;
+            setProfessor(prev => prev ? { ...prev, ...updatedData } : prev);
           }
         }
       )
@@ -681,7 +636,7 @@ export default function ProfessorProfile({
     setWikiYoutube(professor.youtube_url || '');
     setWikiFacebook(professor.facebook_url || '');
     setWikiTwitter(professor.twitter_url || '');
-    setWikiBiography(extractReportFromBiography(professor.biography).cleanBio);
+    setWikiBiography(stripBiographyMetadata(professor.biography));
     setSocialErrors({});
     setIsEditingWiki(true);
   };
@@ -712,10 +667,7 @@ export default function ProfessorProfile({
         ? `${wikiBirthYear}-${wikiBirthMonth}-${wikiBirthDay}`
         : null;
 
-      const cleanUserBio = stripBiographyMetadata(wikiBiography);
-      const bioToSave = activeReport 
-        ? embedReportIntoBiography(cleanUserBio, activeReport) 
-        : cleanUserBio;
+      const bioToSave = stripBiographyMetadata(wikiBiography);
 
       await updateProfessorWiki(professor.id, {
         avatar_url: wikiAvatarUrl,
@@ -841,28 +793,6 @@ export default function ProfessorProfile({
         <p className="text-right text-xs text-[#eab308] font-bold tracking-wide animate-pulse">
           ✓ ¡Enlace copiado al portapapeles!
         </p>
-      )}
-
-      {/* BANNER DE VOTACIÓN DE MODERACIÓN ACTIVA (Arriba de la foto de perfil) */}
-      {activeReport && professor && (
-        <CommunityVoteBanner
-          report={activeReport}
-          targetName={professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`}
-          targetId={professor.id || slug}
-          targetType="professor"
-          currentUserId={user?.uid || null}
-          onRequireAuth={onRequireAuth}
-          onVoteUpdated={(updatedRep) => {
-            if (updatedRep.status === 'dismissed') {
-              setActiveReport(null);
-            } else {
-              setActiveReport(updatedRep);
-            }
-          }}
-          onProfileExpelled={() => {
-            onBack();
-          }}
-        />
       )}
 
       {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen 2) */}
@@ -1672,23 +1602,6 @@ export default function ProfessorProfile({
           professorAvatar={professor.avatar_url || null}
           userUid={user.uid}
           onSubscriptionChange={(subscribed) => setIsSubscribedToNotifications(subscribed)}
-        />
-      )}
-
-      {/* Modal de Reporte / Moderación Comunitaria */}
-      {professor && (
-        <ReportProfileModal
-          isOpen={isReportModalOpen}
-          onClose={() => setIsReportModalOpen(false)}
-          targetId={professor.id || slug}
-          targetType="professor"
-          targetName={professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`}
-          instituteId={professor.institute_id || ''}
-          currentUserId={user?.uid || ''}
-          currentUserName={user?.displayName || 'Miembro del campus'}
-          onReportCreated={(rep) => {
-            setActiveReport(rep);
-          }}
         />
       )}
 

@@ -55,9 +55,7 @@ import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 import { shareContent } from '@/src/lib/share';
 import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 import GenderBadge from '@/components/GenderBadge';
-import { getActiveProfileReport, ProfileReport, extractReportFromBiography, embedReportIntoBiography, stripBiographyMetadata } from '@/src/lib/profileReports';
-import CommunityVoteBanner from '@/components/CommunityVoteBanner';
-import ReportProfileModal from '@/components/Modals/ReportProfileModal';
+import { stripBiographyMetadata } from '@/src/lib/profileReports';
 
 interface StudentProfileProps {
   slug: string;
@@ -143,10 +141,6 @@ export default function StudentProfile({
   const [currentUserGender, setCurrentUserGender] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
 
-  // Moderation / Community Report States
-  const [activeReport, setActiveReport] = useState<ProfileReport | null>(null);
-  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-
   // Wiki Editing States
   const [isEditingWiki, setIsEditingWiki] = useState(false);
   const [wikiAvatarUrl, setWikiAvatarUrl] = useState('');
@@ -210,14 +204,6 @@ export default function StudentProfile({
             setLoveMessages(msgs);
           } catch (mErr) {
             console.warn('Error al cargar mensajes de amor:', mErr);
-          }
-
-          // Cargar reporte activo de moderación comunitaria si existe
-          try {
-            const rep = await getActiveProfileReport(data.id || slug, 'student');
-            setActiveReport(rep);
-          } catch (rErr) {
-            console.debug('Error consultando reporte activo:', rErr);
           }
 
           // Cargar interacciones y votos del usuario si está logueado
@@ -469,39 +455,8 @@ export default function StudentProfile({
           if (payload.eventType === 'DELETE' && payload.old && (payload.old as any).id === studentId) {
             onBack();
           } else if (payload.new && (payload.new as any).id === studentId) {
-            const bio = (payload.new as any).biography || '';
-            const fullName = (payload.new as any).nombre_completo || '';
-            if (bio.includes('__EXPELLED_BY_COMMUNITY__') || fullName.includes('[EXPULSADO')) {
-              onBack();
-              return;
-            }
-            try {
-              const rep = await getActiveProfileReport(studentId, 'student');
-              setActiveReport(rep);
-              const updatedData = payload.new as any;
-              setStudent(prev => prev ? { ...prev, ...updatedData } : prev);
-            } catch (err) {
-              console.error('Error actualizando reporte en tiempo real:', err);
-            }
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'profile_reports',
-        },
-        async (payload) => {
-          const repTargetId = (payload.new as any)?.target_id || (payload.old as any)?.target_id;
-          if (repTargetId === studentId) {
-            try {
-              const rep = await getActiveProfileReport(studentId, 'student');
-              setActiveReport(rep);
-            } catch (err) {
-              console.error('Error refrescando profile_reports:', err);
-            }
+            const updatedData = payload.new as any;
+            setStudent(prev => prev ? { ...prev, ...updatedData } : prev);
           }
         }
       )
@@ -857,7 +812,7 @@ export default function StudentProfile({
     setWikiYoutube(student.youtube_url || '');
     setWikiFacebook(student.facebook_url || '');
     setWikiTwitter(student.twitter_url || '');
-    setWikiBiography(extractReportFromBiography(student.biography).cleanBio);
+    setWikiBiography(stripBiographyMetadata(student.biography));
     setSocialErrors({});
     setIsEditingWiki(true);
   };
@@ -887,10 +842,7 @@ export default function StudentProfile({
         ? `${wikiBirthYear}-${wikiBirthMonth}-${wikiBirthDay}`
         : null;
 
-      const cleanUserBio = stripBiographyMetadata(wikiBiography);
-      const bioToSave = activeReport 
-        ? embedReportIntoBiography(cleanUserBio, activeReport) 
-        : cleanUserBio;
+      const bioToSave = stripBiographyMetadata(wikiBiography);
 
       await updateStudentWiki(student.id, {
         avatar_url: wikiAvatarUrl,
@@ -1011,28 +963,6 @@ export default function StudentProfile({
         <p className="text-right text-xs text-[#eab308] font-bold tracking-wide animate-pulse">
           ✓ ¡Enlace copiado al portapapeles!
         </p>
-      )}
-
-      {/* BANNER DE VOTACIÓN DE MODERACIÓN ACTIVA (Arriba de la foto de perfil) */}
-      {activeReport && student && (
-        <CommunityVoteBanner
-          report={activeReport}
-          targetName={studentFullName}
-          targetId={student.id || slug}
-          targetType="student"
-          currentUserId={user?.uid || null}
-          onRequireAuth={onRequireAuth}
-          onVoteUpdated={(updatedRep) => {
-            if (updatedRep.status === 'dismissed') {
-              setActiveReport(null);
-            } else {
-              setActiveReport(updatedRep);
-            }
-          }}
-          onProfileExpelled={() => {
-            onBack();
-          }}
-        />
       )}
 
       {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen) */}
@@ -2186,23 +2116,6 @@ export default function StudentProfile({
           studentAvatar={student.avatar_url || null}
           userUid={user.uid}
           onSubscriptionChange={(subscribed) => setIsSubscribedToNotifications(subscribed)}
-        />
-      )}
-
-      {/* Modal de Reporte / Moderación Comunitaria */}
-      {student && (
-        <ReportProfileModal
-          isOpen={isReportModalOpen}
-          onClose={() => setIsReportModalOpen(false)}
-          targetId={student.id || slug}
-          targetType="student"
-          targetName={studentFullName}
-          instituteId={student.institute_id || ''}
-          currentUserId={user?.uid || ''}
-          currentUserName={currentAuthorName}
-          onReportCreated={(rep) => {
-            setActiveReport(rep);
-          }}
         />
       )}
 

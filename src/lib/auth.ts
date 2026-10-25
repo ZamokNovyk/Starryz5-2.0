@@ -69,6 +69,14 @@ export function getStoredUser(): AuthUser | null {
 }
 
 /**
+ * Obtiene el token de acceso OAuth almacenado actualmente.
+ */
+export function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+/**
  * Actualiza los datos almacenados del usuario autenticado en caliente.
  */
 export function updateStoredAuthUser(updates: Partial<AuthUser>): AuthUser | null {

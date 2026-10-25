@@ -22,13 +22,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const { request, env } = context;
 
-    const B2_KEY_ID = (env.B2_KEY_ID || '0056bac9fb621d40000000001').trim();
-    let B2_APPLICATION_KEY = (env.B2_APPLICATION_KEY || 'K00575GnrUfEa3rzdIEkV0NDBfhDcx0').trim();
-    if (B2_APPLICATION_KEY.includes('dlEk')) {
-      B2_APPLICATION_KEY = B2_APPLICATION_KEY.replace('dlEk', 'dIEk');
-    }
-    const B2_BUCKET_ID = (env.B2_BUCKET_ID || 'a64b1a7cf94f0b26a2110d14').trim();
+    const B2_KEY_ID = (env.B2_KEY_ID || '').trim();
+    const B2_APPLICATION_KEY = (env.B2_APPLICATION_KEY || '').trim();
+    const B2_BUCKET_ID = (env.B2_BUCKET_ID || '').trim();
     const B2_BUCKET_NAME = (env.B2_BUCKET_NAME || 'starryz5').trim();
+
+    if (!B2_KEY_ID || !B2_APPLICATION_KEY || !B2_BUCKET_ID) {
+      return new Response(JSON.stringify({ error: 'Credenciales B2 no configuradas en Cloudflare Environment Variables' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
 
     const body: any = await request.json();
     const { imageBase64, contentType, userId, fileName: customFileName } = body;
