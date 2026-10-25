@@ -1349,7 +1349,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               <div className="flex items-center justify-center gap-1.5 text-pink-400">
                 <Heart className={`w-4 h-4 ${currentVote === 'fans' ? 'fill-pink-500 text-pink-500' : 'fill-pink-500/30'}`} />
                 <span className="text-[10px] font-black uppercase tracking-wider">
-                  {currentVote === 'fans' ? '✓ Fans' : 'Fans'}
+                  {isSelfProfile ? 'Fans' : currentVote === 'fans' ? '✓ Soy Fan' : 'Soy Fan'}
                 </span>
               </div>
               <div className="text-xl sm:text-2xl font-black text-white">
