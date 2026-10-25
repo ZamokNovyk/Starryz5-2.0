@@ -38,7 +38,8 @@ import {
   X,
   CreditCard,
   Lock,
-  MessageSquare
+  MessageSquare,
+  Send
 } from 'lucide-react';
 import { 
   getUserProfessorSubscriptions, 
@@ -57,6 +58,9 @@ import {
   StudentReviewItem,
   getStudentLoveMessages,
   StudentLoveMessage,
+  createStudentLoveMessage,
+  deleteStudentLoveMessage,
+  toggleStudentLoveMessageHeart,
   submitStudentVote
 } from '@/src/lib/students';
 import { 
@@ -180,14 +184,28 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [editingProfSub, setEditingProfSub] = useState<UserProfessorSubscriptionItem | null>(null);
   const [editingStudentSub, setEditingStudentSub] = useState<UserStudentSubscriptionItem | null>(null);
 
-  const isOwnProfile = !uid || (user && user.uid === uid);
+  // Estados para envío de mensajes de amor anónimos
+  const [loveMessageText, setLoveMessageText] = useState('');
+  const [sendingLoveMessage, setSendingLoveMessage] = useState(false);
+  const [loveMessageSuccess, setLoveMessageSuccess] = useState<string | null>(null);
+  const [loveMessageError, setLoveMessageError] = useState<string | null>(null);
 
-  // Votos de 'users_actitud' (Yo te conozco / Fans - Exclusivo 1 voto)
+  // Estados para actitud y votos (Seguidores / Fans)
   const [knowCount, setKnowCount] = useState(0);
   const [fanCount, setFanCount] = useState(0);
   const [currentVote, setCurrentVote] = useState<'yo_te_conozco' | 'fans' | null>(null);
 
-  const isSelfProfile = isOwnProfile || (uid && user && uid === user.uid);
+  const isOwnProfile = !uid || (user && user.uid === uid) || (typeof window !== 'undefined' && (window.location.pathname === '/miperfil' || window.location.pathname === '/miperfil/'));
+  const isSelfProfile = isOwnProfile || Boolean(uid && user && (uid === user.uid || uid === dbUser?.id || uid === user.email));
+
+  // Sincronizar automáticamente para que la URL siempre sea /miperfil/ cuando estás en tu propio perfil
+  useEffect(() => {
+    if (isSelfProfile && typeof window !== 'undefined') {
+      if (window.location.pathname.startsWith('/perfil/')) {
+        window.history.replaceState(null, '', '/miperfil/');
+      }
+    }
+  }, [isSelfProfile]);
 
   useEffect(() => {
     const targetUid = uid || user?.uid;
@@ -247,18 +265,117 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
   const handleToggleCrush = async () => {
     const targetUid = uid || user?.uid;
-    if (!user?.uid || !targetUid || targetUid === user.uid) return;
+    if (!user?.uid || !targetUid || isSelfProfile) return;
 
     const nextState = !hasCrushedUser;
     setHasCrushedUser(nextState);
     setCrushesCount(prev => nextState ? prev + 1 : Math.max(0, prev - 1));
 
     try {
-      const res = await toggleUserCrush(targetUid, user.uid);
+      const candidateIds = [targetUid, dbUser?.id, (dbUser as any)?.claimed_student_id].filter(Boolean) as string[];
+      const res = await toggleUserCrush(candidateIds[0], user.uid);
       setHasCrushedUser(res.hasCrushed);
       setCrushesCount(res.newCount);
     } catch (err) {
       console.error('Error al votar crush:', err);
+    }
+  };
+
+  const handleSendLoveMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || isSelfProfile) return;
+
+    const trimmed = loveMessageText.trim();
+    if (!trimmed) {
+      setLoveMessageError('Por favor, escribe un mensaje de amor.');
+      return;
+    }
+
+    if (trimmed.length > 500) {
+      setLoveMessageError('El mensaje no debe superar los 500 caracteres.');
+      return;
+    }
+
+    try {
+      setSendingLoveMessage(true);
+      setLoveMessageError(null);
+      setLoveMessageSuccess(null);
+
+      const targetCandidateIds = [
+        dbUser?.id,
+        uid,
+        (dbUser as any)?.claimed_student_id,
+        claimedStudent?.id
+      ].filter(Boolean) as string[];
+      const targetId = targetCandidateIds[0] || uid || '';
+
+      const res = await createStudentLoveMessage(
+        targetId,
+        user.uid,
+        '',
+        null,
+        trimmed,
+        dbUser?.display_name || undefined
+      );
+
+      if (res.success && res.data) {
+        setClaimedLoveMessages(prev => [res.data!, ...prev]);
+        setLoveMessageText('');
+        setLoveMessageSuccess('¡Tu mensaje de amor anónimo fue enviado con éxito! 💌');
+        setTimeout(() => setLoveMessageSuccess(null), 4000);
+      } else {
+        setLoveMessageError(res.error || 'No se pudo enviar el mensaje.');
+      }
+    } catch (err: any) {
+      console.error('Error al enviar mensaje de amor:', err);
+      setLoveMessageError(err?.message || 'Error inesperado al enviar el mensaje.');
+    } finally {
+      setSendingLoveMessage(false);
+    }
+  };
+
+  const handleToggleMessageReaction = async (msg: StudentLoveMessage) => {
+    if (!user) return;
+    const targetCandidateIds = [
+      dbUser?.id,
+      uid,
+      (dbUser as any)?.claimed_student_id,
+      claimedStudent?.id
+    ].filter(Boolean) as string[];
+    const targetId = targetCandidateIds[0] || uid || '';
+
+    const wasHearted = !!msg.has_hearted;
+    const nextHearted = !wasHearted;
+    const newCount = nextHearted ? (msg.hearts_count || 0) + 1 : Math.max(0, (msg.hearts_count || 1) - 1);
+
+    // Actualización optimista instantánea
+    setClaimedLoveMessages(prev =>
+      prev.map(m => m.id === msg.id ? { ...m, has_hearted: nextHearted, hearts_count: newCount } : m)
+    );
+
+    try {
+      await toggleStudentLoveMessageHeart(msg.id, user.uid, targetId);
+    } catch (err) {
+      console.warn('Aviso al reaccionar a mensaje de amor:', err);
+    }
+  };
+
+  const handleDeleteLoveMessage = async (messageId: number | string) => {
+    if (!user) return;
+    const targetCandidateIds = [
+      dbUser?.id,
+      uid,
+      (dbUser as any)?.claimed_student_id,
+      claimedStudent?.id
+    ].filter(Boolean) as string[];
+    const targetId = targetCandidateIds[0] || uid || '';
+
+    setClaimedLoveMessages(prev => prev.filter(m => m.id !== messageId));
+
+    try {
+      await deleteStudentLoveMessage(messageId, user.uid, targetId);
+    } catch (err) {
+      console.warn('Aviso al eliminar mensaje de amor:', err);
     }
   };
 
@@ -1594,12 +1711,42 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   </div>
                 </div>
 
-                <div className="p-6 rounded-2xl bg-gradient-to-b from-pink-950/20 to-[#0e0e0e] border border-pink-500/20 text-center space-y-3 shadow-md">
-                  <div className="w-16 h-16 mx-auto rounded-full bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400 shadow-[0_0_20px_rgba(236,72,153,0.2)]">
-                    <Heart className={`w-8 h-8 ${hasCrushedUser ? 'fill-pink-500 text-pink-500 scale-110' : 'fill-pink-500/30 text-pink-400'} animate-pulse`} />
-                  </div>
+                {/* Tarjeta interactiva de Flechazo / Crush */}
+                <div className="p-6 rounded-2xl bg-gradient-to-b from-pink-950/20 to-[#0e0e0e] border border-pink-500/20 text-center space-y-4 shadow-md">
+                  {/* El corazón en sí mismo es el botón para marcar/desmarcar Crush */}
+                  <button
+                    type="button"
+                    onClick={handleToggleCrush}
+                    disabled={isSelfProfile || !user}
+                    className={`group relative w-20 h-20 sm:w-24 sm:h-24 mx-auto rounded-full flex items-center justify-center transition-all duration-300 shadow-xl select-none ${
+                      isSelfProfile
+                        ? 'bg-pink-500/10 border-2 border-pink-500/20 text-pink-400 cursor-default'
+                        : hasCrushedUser
+                        ? 'bg-gradient-to-br from-pink-500 to-rose-600 border-2 border-pink-400 text-white shadow-[0_0_35px_rgba(236,72,153,0.6)] ring-4 ring-pink-500/30 scale-105 cursor-pointer active:scale-95'
+                        : 'bg-zinc-900/90 hover:bg-pink-950/40 border-2 border-zinc-700 hover:border-pink-500/60 text-zinc-400 hover:text-pink-400 hover:shadow-[0_0_25px_rgba(236,72,153,0.3)] cursor-pointer active:scale-95'
+                    }`}
+                    title={
+                      isSelfProfile
+                        ? 'Tu propio perfil: No puedes flecharte a ti mismo'
+                        : hasCrushedUser
+                        ? '¡Es tu Crush! Toca para retirar flechazo'
+                        : '¡Toca el corazón para marcar como tu Crush! 💘'
+                    }
+                  >
+                    <Heart
+                      className={`w-10 h-10 sm:w-12 sm:h-12 transition-transform duration-300 ${
+                        isSelfProfile
+                          ? 'fill-pink-500/30 text-pink-400'
+                          : hasCrushedUser
+                          ? 'fill-white text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.9)] scale-110 animate-pulse'
+                          : 'fill-transparent text-current group-hover:scale-110 group-hover:fill-pink-500/30'
+                      }`}
+                    />
+                  </button>
+
+                  {/* Conteo de Crushes */}
                   <div>
-                    <div className="text-4xl font-black text-white">
+                    <div className={`text-4xl sm:text-5xl font-black tracking-tight ${hasCrushedUser ? 'text-pink-400' : 'text-white'}`}>
                       {crushesCount}
                     </div>
                     <p className="text-xs text-zinc-400 mt-1 uppercase font-bold tracking-wider">
@@ -1607,25 +1754,116 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     </p>
                   </div>
 
-                  {/* Botón interactivo para marcar/desmarcar Crush cuando es perfil de otro usuario */}
-                  {!isSelfProfile && (
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={handleToggleCrush}
-                        className={`px-6 py-2.5 rounded-full font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer shadow-md active:scale-95 ${
-                          hasCrushedUser
-                            ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)] hover:bg-pink-600'
-                            : 'bg-zinc-900 hover:bg-zinc-800 text-pink-400 border border-pink-500/40 hover:border-pink-500'
-                        }`}
-                      >
-                        <Heart className={`w-4 h-4 ${hasCrushedUser ? 'fill-white' : 'fill-pink-500/30'}`} />
-                        <span>{hasCrushedUser ? '✓ Es tu Crush (Quitar Flechazo)' : '💘 Marcar como mi Crush'}</span>
-                      </button>
-                    </div>
-                  )}
+                  {/* Estado / Feedback interactivo (sin botón largo redundante) */}
+                  <div className="pt-1">
+                    {isSelfProfile ? (
+                      <span className="text-[11px] text-zinc-500 font-medium">
+                        Este es tu propio perfil. Tus admiradores te flecharán aquí.
+                      </span>
+                    ) : hasCrushedUser ? (
+                      <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-pink-500/20 border border-pink-500/40 text-pink-300 text-xs font-black animate-in fade-in">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-pink-400" />
+                        <span>✓ Es tu Crush (Toca el corazón para retirar)</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-pink-400 font-bold tracking-wide">
+                        👉 Toca el corazón arriba para marcarlo como tu Crush
+                      </span>
+                    )}
+                  </div>
                 </div>
 
+                {/* FORMULARIO DE MENSAJE DE AMOR (HABILITADO AL MARCARLO COMO CRUSH) */}
+                {!isSelfProfile && (
+                  hasCrushedUser ? (
+                    <div className="p-5 rounded-2xl bg-gradient-to-b from-pink-950/30 to-[#0e0e0e] border border-pink-500/30 space-y-4 shadow-lg animate-in fade-in duration-300">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-pink-500/20 pb-3">
+                        <div className="space-y-0.5">
+                          <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                            <Heart className="w-4 h-4 fill-pink-500 text-pink-500" />
+                            <span>Dejar un Mensaje de Amor Anónimo</span>
+                          </h4>
+                          <p className="text-[11px] text-zinc-400">
+                            Exprésale tus sentimientos o una confesión sincera de forma 100% anónima.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-black/60 border border-pink-500/30 rounded-lg text-[11px] font-mono text-pink-300 shrink-0 self-start sm:self-center">
+                          <span>Firmarás como:</span>
+                          <span className="font-bold">Anónimo-{user?.uid ? user.uid.substring(0, 8) : '00000000'}</span>
+                          <GenderBadge gender={selectedGender || dbUser?.gender} size="sm" />
+                        </div>
+                      </div>
+
+                      <form onSubmit={handleSendLoveMessage} className="space-y-3">
+                        <div className="space-y-1">
+                          <textarea
+                            value={loveMessageText}
+                            onChange={(e) => setLoveMessageText(e.target.value)}
+                            maxLength={500}
+                            rows={3}
+                            placeholder="¿Qué es lo que más te gusta de esta persona? Escribe tu mensaje secreto o declaración..."
+                            className="w-full rounded-xl bg-[#090909] border border-pink-500/30 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 text-sm text-white p-3.5 outline-none placeholder:text-zinc-600 resize-none transition-all"
+                          />
+                          <div className="flex justify-between items-center text-[10px] text-zinc-500 px-1">
+                            <span>Máximo 500 caracteres</span>
+                            <span className={loveMessageText.length >= 480 ? 'text-rose-400 font-bold' : ''}>
+                              {loveMessageText.length}/500
+                            </span>
+                          </div>
+                        </div>
+
+                        {loveMessageError && (
+                          <div className="p-3 bg-red-950/40 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                            <span>{loveMessageError}</span>
+                          </div>
+                        )}
+
+                        {loveMessageSuccess && (
+                          <div className="p-3 bg-pink-950/40 border border-pink-500/40 rounded-xl text-xs text-pink-300 flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-pink-400 shrink-0" />
+                            <span>{loveMessageSuccess}</span>
+                          </div>
+                        )}
+
+                        <div className="flex justify-end pt-1">
+                          <button
+                            type="submit"
+                            disabled={sendingLoveMessage || !loveMessageText.trim()}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+                              sendingLoveMessage || !loveMessageText.trim()
+                                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                : 'bg-pink-500 hover:bg-pink-600 text-white shadow-[0_0_20px_rgba(236,72,153,0.4)] active:scale-95'
+                            }`}
+                          >
+                            {sendingLoveMessage ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                <span>Enviando...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-4 h-4" />
+                                <span>Enviar Mensaje de Amor 💌</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-[#0f0f0f] border border-pink-500/20 text-center space-y-1 text-xs text-zinc-400">
+                      <p className="font-bold text-pink-300">
+                        💘 ¿Quieres dejarle un mensaje de amor o confesión?
+                      </p>
+                      <p className="text-[11px] text-zinc-500">
+                        Primero márcalo como tu Crush tocando el corazón de arriba para habilitar la caja de mensajes.
+                      </p>
+                    </div>
+                  )
+                )}
+
+                {/* LISTADO DE MENSAJES DE AMOR Y ADMIRACIÓN */}
                 <div className="space-y-4 pt-2">
                   <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
                     <span>Mensajes de Amor y Admiración</span>
@@ -1634,8 +1872,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
                   {claimedLoveMessages.length === 0 ? (
                     <div className="p-8 rounded-xl bg-[#0f0f0f] border border-zinc-800/40 text-center space-y-2">
-                      <p className="text-zinc-400 text-xs">Aún no has recibido mensajes de amor.</p>
-                      <p className="text-zinc-600 text-[11px]">Cuando alguien te dé un flechazo y te deje un mensaje en tu perfil, aparecerá aquí.</p>
+                      <p className="text-zinc-400 text-xs">Aún no se han publicado mensajes de amor.</p>
+                      <p className="text-zinc-600 text-[11px]">
+                        {isSelfProfile
+                          ? 'Cuando alguien te marque como su crush y te deje un mensaje, aparecerá aquí.'
+                          : '¡Sé el primero en flechar este perfil y escribirle algo bonito!'}
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -1661,9 +1903,35 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                           <p className="text-sm text-zinc-300 italic whitespace-pre-wrap leading-relaxed">
                             "{msg.message}"
                           </p>
-                          <div className="flex items-center gap-2 pt-1 text-xs text-zinc-500">
-                            <Heart className="w-3.5 h-3.5 fill-pink-500 text-pink-500" />
-                            <span>{msg.hearts_count || 0} reacciones</span>
+
+                          {/* Reacciones interactivas a cada mensaje en user_love_reactions */}
+                          <div className="flex items-center justify-between pt-2 mt-2 border-t border-zinc-800/40">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMessageReaction(msg)}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                msg.has_hearted
+                                  ? 'bg-pink-500/20 border border-pink-500/40 text-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.2)]'
+                                  : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-pink-300 hover:border-pink-500/30'
+                              }`}
+                              title={msg.has_hearted ? 'Quitar reacción' : 'Reaccionar con un corazón'}
+                            >
+                              <Heart className={`w-3.5 h-3.5 ${msg.has_hearted ? 'fill-pink-500 text-pink-500' : 'fill-none'}`} />
+                              <span>{msg.hearts_count || 0} {msg.hearts_count === 1 ? 'reacción' : 'reacciones'}</span>
+                            </button>
+
+                            {/* Opción de eliminar para el autor del mensaje */}
+                            {user?.uid && msg.user_uid === user.uid && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLoveMessage(msg.id)}
+                                className="text-[11px] text-zinc-500 hover:text-red-400 transition-colors flex items-center gap-1 cursor-pointer"
+                                title="Eliminar mi mensaje"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Eliminar</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2413,25 +2681,25 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
                             {/* Tags de Notificaciones Activas */}
                             <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                              {item.notify_crush && (
+                              {((item as any).notify_crush ?? item.preferences?.notify_crush) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
                                   <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
                                   Crush
                                 </span>
                               )}
-                              {item.notify_review && (
+                              {((item as any).notify_review ?? item.preferences?.notify_review) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
                                   <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
                                   Reseñas
                                 </span>
                               )}
-                              {item.notify_known && (
+                              {((item as any).notify_known ?? item.preferences?.notify_known) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black uppercase tracking-wider">
                                   <UserCheck className="w-2.5 h-2.5 text-blue-400" />
                                   Conocido
                                 </span>
                               )}
-                              {item.notify_fan && (
+                              {((item as any).notify_fan ?? item.preferences?.notify_fan) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
                                   <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
                                   Fans
@@ -2536,30 +2804,30 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                               {item.studentName}
                             </h4>
                             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
-                              {item.studentGrade || item.studentCareer || 'Estudiante'}
+                              {(item as any).studentGrade || item.studentCareer || 'Estudiante'}
                             </p>
 
                             {/* Tags de Notificaciones Activas */}
                             <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                              {item.notify_crush && (
+                              {((item as any).notify_crush ?? item.preferences?.notify_crush) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-500/15 border border-pink-500/30 text-pink-400 text-[9px] font-black uppercase tracking-wider">
                                   <Heart className="w-2.5 h-2.5 fill-pink-500 text-pink-500" />
                                   Crush
                                 </span>
                               )}
-                              {item.notify_love_message && (
+                              {((item as any).notify_love_message ?? item.preferences?.notify_love_message) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[9px] font-black uppercase tracking-wider">
                                   <Mail className="w-2.5 h-2.5 text-rose-400" />
                                   Mensajes
                                 </span>
                               )}
-                              {item.notify_known && (
+                              {((item as any).notify_known ?? item.preferences?.notify_known) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black uppercase tracking-wider">
                                   <UserCheck className="w-2.5 h-2.5 text-blue-400" />
                                   Conocido
                                 </span>
                               )}
-                              {item.notify_fan && (
+                              {((item as any).notify_fan ?? item.preferences?.notify_fan) && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
                                   <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
                                   Fans
