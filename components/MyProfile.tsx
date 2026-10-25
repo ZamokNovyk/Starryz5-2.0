@@ -1349,7 +1349,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               <div className="flex items-center justify-center gap-1.5 text-pink-400">
                 <Heart className={`w-4 h-4 ${currentVote === 'fans' ? 'fill-pink-500 text-pink-500' : 'fill-pink-500/30'}`} />
                 <span className="text-[10px] font-black uppercase tracking-wider">
-                  {isSelfProfile ? 'Fans' : currentVote === 'fans' ? '✓ Soy Fan' : 'Soy Fan'}
+                  {currentVote === 'fans' ? '✓ Fans' : 'Fans'}
                 </span>
               </div>
               <div className="text-xl sm:text-2xl font-black text-white">
@@ -1360,54 +1360,48 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
           {/* Navegación Principal de Pestañas (Universal para todos los perfiles) */}
           <div className="space-y-3">
-            {/* Barra de pestañas principales: Mis Datos, Reseñas, Crushes */}
+            {/* Barra de pestañas principales: Mis Datos, Reseñas, Crushes, Estadísticas */}
             <div className="flex items-center gap-1.5 bg-[#050505] p-1.5 rounded-xl border border-zinc-800/40 max-w-full overflow-x-auto no-scrollbar">
               <button
                 type="button"
                 onClick={() => setClaimedMainTab('mis_datos')}
                 title={isOwnProfile ? 'Mis Datos' : 'Datos'}
-                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                   claimedMainTab === 'mis_datos'
-                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-3.5 sm:px-4'
-                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-2.5 sm:px-4'
+                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
                 }`}
               >
                 <User className="w-4 h-4 flex-shrink-0" />
-                <span className={claimedMainTab === 'mis_datos' ? 'inline' : 'hidden sm:inline'}>
-                  {isOwnProfile ? 'Mis Datos' : 'Datos'}
-                </span>
+                <span>{isOwnProfile ? 'Mis Datos' : 'Datos'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setClaimedMainTab('reseñas')}
                 title="Reseñas"
-                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                   claimedMainTab === 'reseñas'
-                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-3.5 sm:px-4'
-                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-2.5 sm:px-4'
+                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
                 }`}
               >
                 <Star className="w-4 h-4 flex-shrink-0 text-current" />
-                <span className={claimedMainTab === 'reseñas' ? 'inline' : 'hidden sm:inline'}>
-                  Reseñas
-                </span>
+                <span>Reseñas</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setClaimedMainTab('crushes')}
                 title="Crushes"
-                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                   claimedMainTab === 'crushes'
-                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-3.5 sm:px-4'
-                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-2.5 sm:px-4'
+                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
                 }`}
               >
                 <Heart className="w-4 h-4 flex-shrink-0 text-current" />
-                <span className={claimedMainTab === 'crushes' ? 'inline' : 'hidden sm:inline'}>
-                  Crushes
-                </span>
+                <span>Crushes</span>
                 {((claimedStudent?.crushes_count || 0) > 0) && (
                   <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black ${
                     claimedMainTab === 'crushes' ? 'bg-black text-[#eab308]' : 'bg-pink-500/20 text-pink-300'
@@ -1416,6 +1410,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   </span>
                 )}
               </button>
+
             </div>
 
             {/* Sub-pestañas dentro de "Mis Datos" */}
@@ -1424,54 +1419,44 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setProfileTab('info')}
-                  title="Información"
-                  className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     profileTab === 'info'
-                      ? 'bg-zinc-800 text-white font-extrabold px-3 sm:px-3'
-                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 px-2 sm:px-3'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
                   }`}
                 >
-                  <User className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span className={profileTab === 'info' ? 'inline' : 'hidden sm:inline'}>
-                    Información
-                  </span>
+                  <span>Información</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setProfileTab('interactions')}
-                  title="Mis Interacciones"
-                  className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     profileTab === 'interactions'
-                      ? 'bg-zinc-800 text-white font-extrabold px-3 sm:px-3'
-                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 px-2 sm:px-3'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
                   }`}
                 >
-                  <Activity className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span className={profileTab === 'interactions' ? 'inline' : 'hidden sm:inline'}>
-                    Mis Interacciones
-                  </span>
+                  <span>Mis Interacciones</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setProfileTab('subscriptions')}
-                  title="Suscripciones"
-                  className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     profileTab === 'subscriptions'
-                      ? 'bg-zinc-800 text-white font-extrabold px-3 sm:px-3'
-                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 px-2 sm:px-3'
+                      ? 'bg-zinc-800 text-white font-extrabold'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
                   }`}
                 >
-                  <BellRing className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span className={profileTab === 'subscriptions' ? 'inline' : 'hidden sm:inline'}>
-                    Suscripciones
-                  </span>
-                  {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
-                    <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
-                      {profSubscriptions.length + studentSubscriptions.length}
-                    </span>
-                  )}
+                  <div className="relative flex items-center justify-center">
+                    <span>Suscripciones</span>
+                    {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
+                      <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
+                        {profSubscriptions.length + studentSubscriptions.length}
+                      </span>
+                    )}
+                  </div>
                 </button>
               </div>
             )}
@@ -2094,20 +2079,19 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </div>
               )}
 
-              {/* 3 Subtags: Seguidos, Fans y Calificaciones */}
+              {/* 3 Subtags solicitadas: Seguidos, Fans y Calificaciones */}
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-full pb-1">
                 <button
                   type="button"
                   onClick={() => setInteractionFilter('knows')}
-                  title="Seguidos"
-                  className={`rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     interactionFilter === 'knows'
-                      ? 'bg-blue-600 text-white font-extrabold shadow-[0_0_15px_rgba(59,130,246,0.35)] ring-1 ring-blue-400 px-3.5 sm:px-4 py-2'
-                      : 'bg-[#121212] text-blue-400 hover:text-blue-300 border border-blue-500/20 hover:bg-blue-950/20 px-2.5 sm:px-4 py-2'
+                      ? 'bg-blue-600 text-white font-extrabold shadow-[0_0_15px_rgba(59,130,246,0.35)] ring-1 ring-blue-400'
+                      : 'bg-[#121212] text-blue-400 hover:text-blue-300 border border-blue-500/20 hover:bg-blue-950/20'
                   }`}
                 >
                   <UserCheck className="w-3.5 h-3.5" />
-                  <span className={interactionFilter === 'knows' ? 'inline' : 'hidden sm:inline'}>Seguidos</span>
+                  <span>Seguidos</span>
                   <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
                     interactionFilter === 'knows' ? 'bg-black text-blue-300' : 'bg-blue-500/20 text-blue-300'
                   }`}>
@@ -2118,15 +2102,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setInteractionFilter('fans')}
-                  title="Fans"
-                  className={`rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     interactionFilter === 'fans'
-                      ? 'bg-pink-600 text-white font-extrabold shadow-[0_0_15px_rgba(236,72,153,0.35)] ring-1 ring-pink-400 px-3.5 sm:px-4 py-2'
-                      : 'bg-[#121212] text-pink-400 hover:text-pink-300 border border-pink-500/20 hover:bg-pink-950/20 px-2.5 sm:px-4 py-2'
+                      ? 'bg-pink-600 text-white font-extrabold shadow-[0_0_15px_rgba(236,72,153,0.35)] ring-1 ring-pink-400'
+                      : 'bg-[#121212] text-pink-400 hover:text-pink-300 border border-pink-500/20 hover:bg-pink-950/20'
                   }`}
                 >
                   <Heart className="w-3.5 h-3.5 fill-current" />
-                  <span className={interactionFilter === 'fans' ? 'inline' : 'hidden sm:inline'}>Fans</span>
+                  <span>Fans</span>
                   <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
                     interactionFilter === 'fans' ? 'bg-black text-pink-300' : 'bg-pink-500/20 text-pink-300'
                   }`}>
@@ -2137,15 +2120,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setInteractionFilter('ratings')}
-                  title="Calificaciones"
-                  className={`rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     interactionFilter === 'ratings'
-                      ? 'bg-[#eab308] text-black font-extrabold shadow-[0_0_15px_rgba(234,179,8,0.35)] ring-1 ring-amber-300 px-3.5 sm:px-4 py-2'
-                      : 'bg-[#121212] text-[#eab308] hover:text-amber-300 border border-[#eab308]/20 hover:bg-amber-950/20 px-2.5 sm:px-4 py-2'
+                      ? 'bg-[#eab308] text-black font-extrabold shadow-[0_0_15px_rgba(234,179,8,0.35)] ring-1 ring-amber-300'
+                      : 'bg-[#121212] text-[#eab308] hover:text-amber-300 border border-[#eab308]/20 hover:bg-amber-950/20'
                   }`}
                 >
                   <Star className="w-3.5 h-3.5 fill-current" />
-                  <span className={interactionFilter === 'ratings' ? 'inline' : 'hidden sm:inline'}>Calificaciones</span>
+                  <span>Calificaciones</span>
                   <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
                     interactionFilter === 'ratings' ? 'bg-black text-[#eab308]' : 'bg-amber-500/20 text-amber-300'
                   }`}>
@@ -2339,15 +2321,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setSubscriptionsSubTab('professors')}
-                  title="Profesores"
-                  className={`rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                     subscriptionsSubTab === 'professors'
-                      ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)] font-extrabold px-3.5 sm:px-4 py-2'
-                      : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818] px-2.5 sm:px-4 py-2'
+                      ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)] font-extrabold'
+                      : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818]'
                   }`}
                 >
                   <GraduationCap className="w-4 h-4" />
-                  <span className={subscriptionsSubTab === 'professors' ? 'inline' : 'hidden sm:inline'}>Profesores</span>
+                  <span>Profesores</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
                     subscriptionsSubTab === 'professors' ? 'bg-black/20 text-black font-black' : 'bg-zinc-800 text-zinc-400'
                   }`}>
@@ -2358,15 +2339,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setSubscriptionsSubTab('students')}
-                  title="Estudiantes"
-                  className={`rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                     subscriptionsSubTab === 'students'
-                      ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.3)] font-extrabold px-3.5 sm:px-4 py-2'
-                      : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818] px-2.5 sm:px-4 py-2'
+                      ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.3)] font-extrabold'
+                      : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818]'
                   }`}
                 >
                   <Users className="w-4 h-4" />
-                  <span className={subscriptionsSubTab === 'students' ? 'inline' : 'hidden sm:inline'}>Estudiantes</span>
+                  <span>Estudiantes</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
                     subscriptionsSubTab === 'students' ? 'bg-black/20 text-white font-black' : 'bg-zinc-800 text-zinc-400'
                   }`}>
