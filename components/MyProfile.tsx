@@ -1567,108 +1567,10 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   </p>
                   <p>
                     {isSelfProfile
-                      ? 'Cualquier miembro de la comunidad puede calificar tu perfil con estrellas. Cada reseña se registra con su autor y fecha abajo en tiempo real.'
+                      ? 'Cualquier miembro de la comunidad puede calificar tu perfil con estrellas para fortalecer tu reputación.'
                       : 'Tus estrellas otorgadas fortalecen la reputación de este usuario en la red social Starryz.'}
                   </p>
                 </div>
-              </div>
-
-              {/* LISTADO DETALLADO DE RESEÑAS RECIBIDAS */}
-              <div className="bg-[#050505] border border-zinc-800/60 rounded-2xl p-6 sm:p-8 space-y-5 shadow-lg">
-                <div className="flex items-center justify-between gap-3 border-b border-zinc-800/60 pb-4 flex-wrap">
-                  <div className="space-y-1">
-                    <h4 className="text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
-                      <MessageSquare className="w-4 h-4 text-[#eab308]" />
-                      Reseñas Recibidas ({claimedReviews.length})
-                    </h4>
-                    <p className="text-xs text-zinc-400">
-                      Historial de calificaciones de estrellas otorgadas por la comunidad.
-                    </p>
-                  </div>
-                  <span className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-mono font-bold">
-                    {claimedReviews.length} {claimedReviews.length === 1 ? 'reseña registrada' : 'reseñas registradas'}
-                  </span>
-                </div>
-
-                {claimedReviews.length === 0 ? (
-                  <div className="text-center py-12 px-4 rounded-xl border border-dashed border-zinc-800/80 bg-zinc-950/40 space-y-3">
-                    <div className="w-12 h-12 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-500">
-                      <Star className="w-6 h-6 stroke-[1.5]" />
-                    </div>
-                    <div className="space-y-1 max-w-sm mx-auto">
-                      <p className="text-sm font-bold text-zinc-300">
-                        {isSelfProfile ? 'Aún no tienes reseñas recibidas' : 'Este usuario aún no tiene reseñas'}
-                      </p>
-                      <p className="text-xs text-zinc-500">
-                        {isSelfProfile
-                          ? 'Cuando otros usuarios o estudiantes de la comunidad califiquen tu perfil, aparecerán aquí con su foto, nombre y fecha.'
-                          : '¡Sé el primero en calificar este perfil con estrellas!'}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {claimedReviews.map((review) => {
-                      const dateFormatted = review.created_at
-                        ? new Date(review.created_at).toLocaleDateString('es-ES', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })
-                        : 'Reciente';
-
-                      return (
-                        <div 
-                          key={review.id}
-                          className="bg-[#0b0b0b] border border-zinc-800/70 hover:border-zinc-700/80 rounded-xl p-4 transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            {review.voter_avatar ? (
-                              <img 
-                                src={review.voter_avatar} 
-                                alt={review.voter_name || 'Usuario'} 
-                                className="w-10 h-10 rounded-full object-cover border border-zinc-700 shrink-0" 
-                              />
-                            ) : (
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500/20 to-yellow-600/20 border border-amber-500/30 flex items-center justify-center text-[#eab308] font-black text-sm shrink-0">
-                                {(review.voter_name || 'U').charAt(0).toUpperCase()}
-                              </div>
-                            )}
-
-                            <div className="min-w-0 space-y-0.5">
-                              <p className="text-sm font-bold text-white truncate">
-                                {review.voter_name || 'Miembro de la comunidad'}
-                              </p>
-                              <p className="text-[11px] text-zinc-500 font-mono">
-                                {dateFormatted}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 self-start sm:self-center shrink-0 bg-zinc-900/80 px-3 py-1.5 rounded-lg border border-zinc-800/60">
-                            <div className="flex items-center gap-1">
-                              {[1, 2, 3, 4, 5].map((s) => (
-                                <Star 
-                                  key={s}
-                                  className={`w-4 h-4 ${
-                                    s <= review.stars 
-                                      ? 'fill-[#eab308] text-[#eab308]' 
-                                      : 'text-zinc-700'
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                            <span className="text-xs font-black text-[#eab308] font-mono ml-1">
-                              {review.stars}.0
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             </div>
           ) : claimedMainTab === 'crushes' ? (
