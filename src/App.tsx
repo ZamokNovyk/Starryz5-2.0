@@ -204,7 +204,7 @@ export default function App() {
   // Auto-navigate to profile when user logs in if they previously clicked "Perfil"
   useEffect(() => {
     if (user && autoNavigateToProfile) {
-      navigate('/miperfil/');
+      navigate(`/perfil/${user.uid}`);
       setAutoNavigateToProfile(false);
     }
   }, [user, autoNavigateToProfile]);
@@ -222,7 +222,7 @@ export default function App() {
 
   const handleProfileTabClick = () => {
     if (user) {
-      navigate('/miperfil/');
+      navigate(`/perfil/${user.uid}`);
     } else {
       setJoinModalOpen(true);
       setAutoNavigateToProfile(true);
@@ -268,9 +268,8 @@ export default function App() {
   const isStudentRoute = route.pathname.startsWith('/estudiantes/');
   const studentSlug = isStudentRoute ? route.pathname.replace('/estudiantes/', '') : '';
 
-  const isMyProfileRoute = route.pathname === '/miperfil' || route.pathname === '/miperfil/';
-  const isUserProfileRoute = route.pathname.startsWith('/perfil/') || isMyProfileRoute;
-  const userProfileUid = isMyProfileRoute ? (user?.uid || '') : (route.pathname.startsWith('/perfil/') ? route.pathname.replace('/perfil/', '') : '');
+  const isUserProfileRoute = route.pathname.startsWith('/perfil/');
+  const userProfileUid = isUserProfileRoute ? route.pathname.replace('/perfil/', '') : '';
 
   const isAdminRoute = route.pathname === '/admin';
   const isPdfOrganizerRoute = route.pathname === '/herramientas/organizadorpdf' || route.pathname === '/herramientas/organizador-pdf';
@@ -411,7 +410,7 @@ export default function App() {
           <AdminDashboard
             onBack={() => {
               if (user) {
-                navigate('/miperfil/');
+                navigate(`/perfil/${user.uid}`);
               } else {
                 navigate('/');
               }
