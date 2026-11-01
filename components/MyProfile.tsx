@@ -41,7 +41,9 @@ import {
   MessageSquare,
   Layers,
   Send,
-  Bookmark
+  Bookmark,
+  Pencil,
+  Check
 } from 'lucide-react';
 import { 
   getUserProfessorSubscriptions, 
@@ -99,6 +101,8 @@ interface SupabaseUser {
   country_code?: string | null;
   role?: string | null;
   photo_url: string | null;
+  bio?: string | null;
+  descripcion?: string | null;
   created_at: string;
   is_anonymous: boolean;
   linked_google_at: string | null;
@@ -159,6 +163,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [profileTab, setProfileTab] = useState<'info' | 'interactions' | 'subscriptions' | 'admin'>('info');
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isViewPhotoModalOpen, setIsViewPhotoModalOpen] = useState(false);
+
+  // Estados para edición de descripción
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [descriptionInput, setDescriptionInput] = useState('');
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [descriptionSuccessMsg, setDescriptionSuccessMsg] = useState<string | null>(null);
 
   // Estados para el perfil transformado tras reclamar perfil con DNI
   const [claimedStudent, setClaimedStudent] = useState<Student | null>(null);
@@ -746,6 +756,9 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           setSelectedCountryCode(loadedCountryCode);
           setSelectedCountryName(loadedCountryName);
           setInitialCountryCode(loadedCountryCode);
+
+          const loadedDesc = (data as any)?.descripcion ?? (data as any)?.bio ?? '';
+          setDescriptionInput(loadedDesc);
 
           setUsernameAvailability({ status: 'available', message: 'Nombre actual asignado' });
         }
@@ -1376,6 +1389,70 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     }
   };
 
+  // Guardar descripción del perfil (máximo 150 caracteres)
+  const handleSaveDescription = async () => {
+    const cleanDesc = descriptionInput.trim().slice(0, 150);
+    const targetUserId = dbUser?.id || user?.uid;
+    if (!targetUserId) return;
+
+    setSavingDescription(true);
+    setErrorMsg(null);
+    try {
+      // Intentar actualizar descripcion (y bio por compatibilidad) en users
+      let updateQuery = supabase.from('users').update({ 
+        descripcion: cleanDesc,
+        bio: cleanDesc
+      } as any);
+
+      if (dbUser?.id) {
+        updateQuery = updateQuery.eq('id', dbUser.id);
+      } else if (user?.email) {
+        updateQuery = updateQuery.eq('email', user.email);
+      } else {
+        updateQuery = updateQuery.eq('id', targetUserId);
+      }
+
+      const { error: updateError } = await updateQuery;
+
+      if (updateError) {
+        // Si la columna descripcion aún no existe en SQL, intentar con bio o descripcion individualmente
+        if (updateError.message.includes('descripcion') || updateError.message.includes('column')) {
+          let fallbackQuery = supabase.from('users').update({ descripcion: cleanDesc } as any);
+          if (dbUser?.id) fallbackQuery = fallbackQuery.eq('id', dbUser.id);
+          else fallbackQuery = fallbackQuery.eq('id', targetUserId);
+          const { error: fallbackErr } = await fallbackQuery;
+          if (fallbackErr) {
+            let bioQuery = supabase.from('users').update({ bio: cleanDesc } as any);
+            if (dbUser?.id) bioQuery = bioQuery.eq('id', dbUser.id);
+            else bioQuery = bioQuery.eq('id', targetUserId);
+            await bioQuery;
+          }
+        } else {
+          throw updateError;
+        }
+      }
+
+      // Actualizar estado local
+      setDbUser((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          descripcion: cleanDesc,
+          bio: cleanDesc,
+        };
+      });
+
+      setIsEditingDescription(false);
+      setDescriptionSuccessMsg('¡Descripción actualizada correctamente!');
+      setTimeout(() => setDescriptionSuccessMsg(null), 3500);
+    } catch (err: any) {
+      console.error('Error al actualizar descripción:', err);
+      setErrorMsg('No se pudo guardar la descripción. Asegúrate de haber ejecutado el SQL en Supabase.');
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
   if (!user && isOwnProfile) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 text-center space-y-6">
@@ -1519,10 +1596,85 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               )}
             </div>
 
-            {/* Bio / Tagline */}
-            <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
-              {(dbUser as any)?.bio || 'Creador digital & miembro de Starryz 5. Compartiendo momentos increíbles y explorando el campus. ✨'}
-            </p>
+            {/* Descripción / Bio editable */}
+            <div className="space-y-1.5">
+              {isOwnProfile && isEditingDescription ? (
+                /* MODO EDICIÓN */
+                <div className="space-y-2 animate-in fade-in duration-150">
+                  <div className="relative">
+                    <textarea
+                      rows={2}
+                      maxLength={150}
+                      value={descriptionInput}
+                      onChange={(e) => setDescriptionInput(e.target.value.slice(0, 150))}
+                      placeholder="Escribe una descripción para tu perfil... (máx. 150 caracteres)"
+                      className="w-full max-w-xl bg-[#0c0d12] border border-zinc-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white placeholder-zinc-500 outline-none resize-none leading-relaxed transition-colors"
+                      autoFocus
+                    />
+                    <span className={`absolute bottom-2 right-3 text-[10px] font-mono ${descriptionInput.length >= 140 ? 'text-amber-400' : 'text-zinc-600'}`}>
+                      {descriptionInput.length}/150
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveDescription}
+                      disabled={savingDescription}
+                      className="px-3.5 py-1.5 rounded-lg bg-[#eab308] hover:bg-yellow-400 text-black font-black text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 shadow-md"
+                    >
+                      {savingDescription ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5" />
+                      )}
+                      <span>Guardar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingDescription(false);
+                        setDescriptionInput((dbUser as any)?.descripcion ?? (dbUser as any)?.bio ?? '');
+                      }}
+                      disabled={savingDescription}
+                      className="px-3 py-1.5 rounded-lg text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* MODO LECTURA */
+                <div className="flex items-start gap-2 group">
+                  <p className="text-xs sm:text-sm text-zinc-400 max-w-xl leading-relaxed">
+                    {(dbUser as any)?.descripcion || (dbUser as any)?.bio || (
+                      <span className="text-zinc-600 italic">
+                        {isOwnProfile ? 'Sin descripción — haz clic en el lápiz para agregar una.' : 'Sin descripción.'}
+                      </span>
+                    )}
+                  </p>
+                  {isOwnProfile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDescriptionInput((dbUser as any)?.descripcion ?? (dbUser as any)?.bio ?? '');
+                        setIsEditingDescription(true);
+                      }}
+                      title="Editar descripción"
+                      className="opacity-0 group-hover:opacity-100 mt-0.5 p-1 rounded-md text-zinc-500 hover:text-amber-400 hover:bg-zinc-800 transition-all cursor-pointer flex-shrink-0"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {descriptionSuccessMsg && (
+                <p className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5 animate-in fade-in duration-200">
+                  <Check className="w-3 h-3" />
+                  {descriptionSuccessMsg}
+                </p>
+              )}
+            </div>
 
             {/* Miembro desde */}
             <div className="flex items-center justify-center sm:justify-start gap-1.5 text-zinc-500 text-xs font-medium">
