@@ -59,6 +59,7 @@ import {
   StudentReviewItem,
   getStudentLoveMessages,
   StudentLoveMessage,
+  getTodayStudentVotes,
   submitStudentVote,
   createStudentLoveMessage,
   deleteStudentLoveMessage,
@@ -251,6 +252,36 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     loadCrushes();
   }, [uid, user?.uid, dbUser?.id, (dbUser as any)?.crushes_count]);
 
+  // Votos de estrellas y límite diario de 6 calificaciones por día
+  const [todayVotes, setTodayVotes] = useState<number[]>([]);
+  const opportunitiesLeft = Math.max(0, 6 - todayVotes.length);
+
+  useEffect(() => {
+    const targetUid = uid || user?.uid;
+    if (!user?.uid || !targetUid || isSelfProfile) {
+      setTodayVotes([]);
+      return;
+    }
+
+    async function loadTodayRatings() {
+      try {
+        const candidateIds = Array.from(new Set([
+          targetUid,
+          dbUser?.id,
+          (dbUser as any)?.claimed_student_id,
+          claimedStudent?.id
+        ].filter(Boolean) as string[]));
+
+        const votes = await getTodayStudentVotes(candidateIds[0], user.uid, candidateIds);
+        setTodayVotes(votes);
+      } catch (err) {
+        console.warn('Error al cargar votos diarios del usuario:', err);
+      }
+    }
+
+    loadTodayRatings();
+  }, [uid, user?.uid, dbUser?.id, claimedStudent?.id, isSelfProfile]);
+
   const handleToggleCrush = async () => {
     const targetUid = uid || user?.uid;
     if (!user?.uid || !targetUid || targetUid === user.uid) return;
@@ -393,21 +424,66 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     }
     const targetUserId = dbUser?.id || uid || claimedStudent?.id;
     if (!targetUserId) return;
-    if (targetUserId === user.uid || targetUserId === dbUser?.id) {
+    if (isSelfProfile || targetUserId === user.uid || (dbUser?.id && dbUser.id === user.uid)) {
       setErrorMsg('No puedes calificar tu propio perfil.');
       return;
     }
+    if (opportunitiesLeft <= 0) {
+      setErrorMsg('Has alcanzado el límite diario de 6 calificaciones para este usuario.');
+      return;
+    }
+    if (profileVotingInProgress) return;
+
+    // Reproducir sonido de estrella si está disponible
+    try {
+      const audioUrl = `/sonidos/star${stars}.mp3`;
+      const audio = new Audio(audioUrl);
+      audio.volume = 0.5;
+      audio.play().catch(() => {});
+    } catch (e) {}
+
     try {
       setProfileVotingInProgress(true);
-      const res = await submitStudentVote(targetUserId, user.uid, stars);
+      const candidateIds = Array.from(new Set([
+        targetUserId,
+        dbUser?.id,
+        uid,
+        (dbUser as any)?.claimed_student_id,
+        claimedStudent?.id
+      ].filter(Boolean) as string[]));
+
+      const res = await submitStudentVote(targetUserId, user.uid, stars, candidateIds);
       if (res.success) {
+        setTodayVotes(prev => [...prev, stars]);
         setProfileVoteSuccessMsg(`¡Has calificado con ${stars} ${stars === 1 ? 'estrella' : 'estrellas'} exitosamente!`);
         setTimeout(() => setProfileVoteSuccessMsg(null), 3500);
+
+        if (res.breakdown) {
+          setClaimedRatingBreakdown(res.breakdown);
+        }
+        if (typeof res.new_score === 'number') {
+          setClaimedStudent(prev => prev ? {
+            ...prev,
+            score: res.new_score,
+            total_ratings: res.total_ratings,
+          } : null);
+          setDbUser(prev => prev ? {
+            ...prev,
+            score: res.new_score,
+            total_ratings: res.total_ratings,
+            stars_1: res.breakdown ? res.breakdown[1] : (prev as any).stars_1,
+            stars_2: res.breakdown ? res.breakdown[2] : (prev as any).stars_2,
+            stars_3: res.breakdown ? res.breakdown[3] : (prev as any).stars_3,
+            stars_4: res.breakdown ? res.breakdown[4] : (prev as any).stars_4,
+            stars_5: res.breakdown ? res.breakdown[5] : (prev as any).stars_5,
+          } : null);
+        }
       } else if (res.error) {
         setErrorMsg(res.error);
       }
     } catch (e: any) {
       console.warn('Error al votar estrellas:', e);
+      setErrorMsg('Ocurrió un error al procesar tu calificación.');
     } finally {
       setProfileVotingInProgress(false);
     }
@@ -738,7 +814,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           const candidateIds = Array.from(new Set([
             dbUser?.id,
             targetUid,
-            user?.uid,
             (dbUser as any)?.claimed_student_id,
             studentId,
             studentData?.id
@@ -751,17 +826,45 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             getStudentReviewsList(studentData.id, candidateIds),
           ]);
 
-          // Calcular promedio real y total desde los votos registrados en user_reseñas
-          const totalVotesCount = Object.values(breakdown).reduce((a, b) => a + b, 0);
-          const sumStars = Object.entries(breakdown).reduce((acc, [s, c]) => acc + (Number(s) * c), 0);
-          const realScore = totalVotesCount > 0 ? Number((sumStars / totalVotesCount).toFixed(1)) : (studentData.score || 0.0);
-          const realTotalRatings = Math.max(totalVotesCount, studentData.total_ratings || 0);
+          // Calcular promedio real y total desde los votos registrados en user_reseñas o cacheados en dbUser
+          let totalVotesCount = Object.values(breakdown).reduce((a, b) => a + b, 0);
+          let sumStars = Object.entries(breakdown).reduce((acc, [s, c]) => acc + (Number(s) * c), 0);
+
+          if (totalVotesCount === 0 && dbUser) {
+            const uS1 = Number((dbUser as any).stars_1) || 0;
+            const uS2 = Number((dbUser as any).stars_2) || 0;
+            const uS3 = Number((dbUser as any).stars_3) || 0;
+            const uS4 = Number((dbUser as any).stars_4) || 0;
+            const uS5 = Number((dbUser as any).stars_5) || 0;
+            const uTotal = uS1 + uS2 + uS3 + uS4 + uS5;
+            if (uTotal > 0) {
+              breakdown[1] = uS1;
+              breakdown[2] = uS2;
+              breakdown[3] = uS3;
+              breakdown[4] = uS4;
+              breakdown[5] = uS5;
+              totalVotesCount = uTotal;
+              sumStars = (1 * uS1) + (2 * uS2) + (3 * uS3) + (4 * uS4) + (5 * uS5);
+            }
+          }
+
+          const realScore = totalVotesCount > 0 
+            ? Number((sumStars / totalVotesCount).toFixed(1)) 
+            : (Number((dbUser as any)?.score) || studentData.score || 0.0);
+          const realTotalRatings = totalVotesCount > 0 
+            ? totalVotesCount 
+            : (Number((dbUser as any)?.total_ratings) || studentData.total_ratings || 0);
 
           studentData.score = realScore;
           studentData.total_ratings = realTotalRatings;
           if (dbUser) {
             (dbUser as any).score = realScore;
             (dbUser as any).total_ratings = realTotalRatings;
+            (dbUser as any).stars_1 = breakdown[1];
+            (dbUser as any).stars_2 = breakdown[2];
+            (dbUser as any).stars_3 = breakdown[3];
+            (dbUser as any).stars_4 = breakdown[4];
+            (dbUser as any).stars_5 = breakdown[5];
           }
 
           const realKnows = Math.max(counts.knows, (dbUser as any)?.knows_count || 0, studentData.knows_count || 0);
@@ -1632,22 +1735,33 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       Calificaciones de la comunidad en la red social Starryz.
                     </p>
                   </div>
-                  <div className="px-3 py-1 rounded-full bg-[#eab308]/15 border border-[#eab308]/30 text-[#eab308] text-xs font-black tracking-wider uppercase">
-                    ★ {(claimedStudent?.score || 0).toFixed(1)} / 5.0
+                  <div className="flex items-center gap-2">
+                    {!isSelfProfile && (
+                      <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                        opportunitiesLeft === 0
+                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                          : 'bg-[#eab308]/10 text-[#eab308] border-[#eab308]/20'
+                      }`}>
+                        OPORTUNIDADES: {opportunitiesLeft}/6
+                      </div>
+                    )}
+                    <div className="px-3 py-1 rounded-full bg-[#eab308]/15 border border-[#eab308]/30 text-[#eab308] text-xs font-black tracking-wider uppercase">
+                      ★ {(claimedStudent?.score || (dbUser as any)?.score || 0).toFixed(1)} / 5.0
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex flex-col md:flex-row items-center gap-8 pt-2">
                   <div className="bg-[#0f0f0f] border border-zinc-800/40 rounded-2xl p-6 text-center w-full md:w-52 space-y-3 shadow-lg">
                     <span className="block text-5xl font-black text-[#eab308] tracking-tighter">
-                      {(claimedStudent?.score || 0).toFixed(1)}
+                      {(claimedStudent?.score || (dbUser as any)?.score || 0).toFixed(1)}
                     </span>
                     <div className="flex items-center justify-center gap-1">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Star 
                           key={star} 
                           className={`w-5 h-5 ${
-                            star <= Math.round(claimedStudent?.score || 0)
+                            star <= Math.round(claimedStudent?.score || (dbUser as any)?.score || 0)
                               ? 'fill-[#eab308] text-[#eab308]' 
                               : 'text-zinc-700'
                           }`} 
@@ -1655,7 +1769,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       ))}
                     </div>
                     <span className="block text-[10px] uppercase text-zinc-500 font-extrabold tracking-widest">
-                      {claimedStudent?.total_ratings || 0} VOTOS TOTALES
+                      {claimedStudent?.total_ratings || (dbUser as any)?.total_ratings || 0} VOTOS TOTALES
                     </span>
                   </div>
 
@@ -1692,20 +1806,38 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       ¿Conoces a {dbUser?.display_name || user?.displayName || 'este usuario'}? ¡Deja tu calificación de estrellas!
                     </p>
 
-                    <div className="flex items-center justify-center gap-2">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button
-                          key={star}
-                          type="button"
-                          disabled={profileVotingInProgress}
-                          onClick={() => handleVoteUserProfile(star)}
-                          className="p-2.5 bg-[#121212] hover:bg-[#eab308]/15 border border-zinc-800 hover:border-[#eab308]/40 rounded-xl text-zinc-500 hover:text-[#eab308] transition-all cursor-pointer disabled:opacity-50 active:scale-95 group shadow-sm"
-                          title={`Votar ${star} ${star === 1 ? 'estrella' : 'estrellas'}`}
-                        >
-                          <Star className="w-6 h-6 group-hover:scale-110 transition-transform fill-current group-hover:fill-[#eab308]" />
-                        </button>
-                      ))}
-                    </div>
+                    {opportunitiesLeft === 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-center gap-2 opacity-30 select-none">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <div
+                              key={star}
+                              className="p-2.5 bg-[#121212] border border-zinc-800 rounded-xl text-zinc-600 cursor-not-allowed"
+                            >
+                              <Star className="w-6 h-6 fill-zinc-700 text-zinc-700" />
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-wider text-center">
+                          Has alcanzado el límite de 6 calificaciones por hoy para este perfil.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            disabled={profileVotingInProgress}
+                            onClick={() => handleVoteUserProfile(star)}
+                            className="p-2.5 bg-[#121212] hover:bg-[#eab308]/15 border border-zinc-800 hover:border-[#eab308]/40 rounded-xl text-zinc-500 hover:text-[#eab308] transition-all cursor-pointer disabled:opacity-50 active:scale-95 group shadow-sm"
+                            title={`Votar ${star} ${star === 1 ? 'estrella' : 'estrellas'} (${opportunitiesLeft} disponibles hoy)`}
+                          >
+                            <Star className="w-6 h-6 group-hover:scale-110 transition-transform fill-current group-hover:fill-[#eab308]" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
 
                     {profileVoteSuccessMsg && (
                       <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center text-xs text-emerald-400 font-bold animate-in fade-in">

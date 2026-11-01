@@ -1215,24 +1215,64 @@ export async function toggleStudentInteraction(
 /**
  * Obtiene la lista de votos realizados por el usuario HOY para un estudiante desde 'user_reseñas'.
  */
-export async function getTodayStudentVotes(studentId: string, userUid: string): Promise<number[]> {
+export async function getTodayStudentVotes(
+  studentId: string, 
+  userUid: string,
+  candidateIds?: string[]
+): Promise<number[]> {
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayIso = todayStart.toISOString();
 
-    const { data, error } = await supabase
-      .from('user_reseñas')
-      .select('stars')
-      .eq('target_user_id', studentId)
-      .eq('voter_uid', userUid)
-      .gte('created_at', todayIso);
+    const rawIds = Array.from(new Set([studentId, ...(candidateIds || [])].filter(Boolean) as string[]));
+    if (rawIds.length === 0 || !userUid) return [];
 
-    if (error || !data) {
-      return [];
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuids = rawIds.filter(id => UUID_REGEX.test(id));
+    const nonUuids = rawIds.filter(id => !UUID_REGEX.test(id));
+
+    const votes: number[] = [];
+
+    if (uuids.length > 0) {
+      try {
+        let q = supabase
+          .from('user_reseñas')
+          .select('stars')
+          .eq('voter_uid', userUid)
+          .gte('created_at', todayIso);
+        if (uuids.length === 1) {
+          q = q.eq('target_user_id', uuids[0]);
+        } else {
+          q = q.in('target_user_id', uuids);
+        }
+        const { data, error } = await q;
+        if (!error && data) {
+          votes.push(...data.map((v: any) => Number(v.stars)));
+        }
+      } catch (e) {}
     }
 
-    return (data || []).map((v: any) => Number(v.stars));
+    if (nonUuids.length > 0) {
+      try {
+        let q = supabase
+          .from('user_reseñas')
+          .select('stars')
+          .eq('voter_uid', userUid)
+          .gte('created_at', todayIso);
+        if (nonUuids.length === 1) {
+          q = q.eq('target_user_id', nonUuids[0]);
+        } else {
+          q = q.in('target_user_id', nonUuids);
+        }
+        const { data, error } = await q;
+        if (!error && data) {
+          votes.push(...data.map((v: any) => Number(v.stars)));
+        }
+      } catch (e) {}
+    }
+
+    return votes;
   } catch (err) {
     return [];
   }
@@ -1431,7 +1471,30 @@ export async function getStudentRatingBreakdown(
       return breakdown;
     }
 
-    // 3. Si no hay registros en user_reseñas, consultar columnas cacheadas en la tabla 'students'
+    // 3. Si no hay registros en user_reseñas, consultar columnas cacheadas en la tabla 'users' o 'students'
+    if (uuids.length > 0) {
+      try {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('stars_1, stars_2, stars_3, stars_4, stars_5')
+          .in('id', uuids)
+          .limit(1)
+          .maybeSingle();
+
+        if (userData) {
+          const s1 = Number(userData.stars_1) || 0;
+          const s2 = Number(userData.stars_2) || 0;
+          const s3 = Number(userData.stars_3) || 0;
+          const s4 = Number(userData.stars_4) || 0;
+          const s5 = Number(userData.stars_5) || 0;
+
+          if (s1 > 0 || s2 > 0 || s3 > 0 || s4 > 0 || s5 > 0) {
+            return { 1: s1, 2: s2, 3: s3, 4: s4, 5: s5 };
+          }
+        }
+      } catch (e) {}
+    }
+
     if (rawIds.length > 0) {
       try {
         const { data: studentData } = await supabase
@@ -1462,31 +1525,74 @@ export async function getStudentRatingBreakdown(
 }
 
 /**
- * Registra una calificación por estrellas para un estudiante en la tabla 'user_reseñas',
- * y actualiza de inmediato el promedio 'score', el 'total_ratings' y las 5 columnas 'stars_1' .. 'stars_5' en 'students'.
+ * Registra una calificación por estrellas para un estudiante/usuario en la tabla 'user_reseñas',
+ * valida el límite diario de exactamente 6 intentos por día,
+ * y acumula y actualiza de inmediato el promedio 'score', el 'total_ratings' y las 5 columnas 'stars_1' .. 'stars_5' en 'users' y 'students'.
  */
 export async function submitStudentVote(
   studentId: string,
   userUid: string,
-  stars: number
-): Promise<{ success: boolean; new_score: number; total_ratings: number; error?: string }> {
+  stars: number,
+  candidateIds?: string[]
+): Promise<{ 
+  success: boolean; 
+  new_score: number; 
+  total_ratings: number; 
+  breakdown?: { [key: number]: number };
+  today_votes_count?: number;
+  error?: string 
+}> {
   try {
-    if (studentId === userUid) {
+    if (!studentId || !userUid) {
+      return { success: false, new_score: 0, total_ratings: 0, error: 'Parámetros inválidos' };
+    }
+
+    const rawIds = Array.from(new Set([studentId, ...(candidateIds || [])].filter(Boolean) as string[]));
+    if (studentId === userUid || (candidateIds && candidateIds.includes(userUid))) {
       return { success: false, new_score: 0, total_ratings: 0, error: 'No puedes calificar tu propio perfil' };
     }
 
-    try {
-      const { data: linkedCheck } = await supabase
-        .from('users')
-        .select('id, claimed_student_id')
-        .or(`id.eq.${studentId},claimed_student_id.eq.${studentId}`)
-        .limit(1)
-        .maybeSingle();
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-      if (linkedCheck?.id === userUid) {
-        return { success: false, new_score: 0, total_ratings: 0, error: 'No puedes calificar tu propio perfil' };
+    try {
+      if (UUID_REGEX.test(studentId)) {
+        const { data: linkedCheck } = await supabase
+          .from('users')
+          .select('id, claimed_student_id')
+          .eq('id', studentId)
+          .limit(1)
+          .maybeSingle();
+
+        if (linkedCheck?.id === userUid) {
+          return { success: false, new_score: 0, total_ratings: 0, error: 'No puedes calificar tu propio perfil' };
+        }
+      } else {
+        const { data: linkedCheck } = await supabase
+          .from('users')
+          .select('id, claimed_student_id')
+          .eq('claimed_student_id', studentId)
+          .limit(1)
+          .maybeSingle();
+
+        if (linkedCheck?.id === userUid) {
+          return { success: false, new_score: 0, total_ratings: 0, error: 'No puedes calificar tu propio perfil' };
+        }
       }
     } catch (e) {}
+
+    // LÍMITE ESTRICTO DE 6 CALIFICACIONES POR DÍA
+    const todayVotes = await getTodayStudentVotes(studentId, userUid, rawIds);
+    if (todayVotes.length >= 6) {
+      return { 
+        success: false, 
+        new_score: 0, 
+        total_ratings: 0, 
+        today_votes_count: todayVotes.length,
+        error: 'Has alcanzado el límite de 6 calificaciones por hoy para este usuario.' 
+      };
+    }
+
+    const cleanStars = Math.max(1, Math.min(5, Math.round(stars)));
 
     // 1. Insertar el voto en 'user_reseñas'
     const { error: insertErr } = await supabase
@@ -1495,92 +1601,101 @@ export async function submitStudentVote(
         {
           target_user_id: studentId,
           voter_uid: userUid,
-          stars: stars,
+          stars: cleanStars,
         }
       ]);
 
     if (insertErr) {
       console.warn('Aviso al insertar en user_reseñas:', insertErr.message);
+      return { success: false, new_score: 0, total_ratings: 0, error: insertErr.message };
     }
 
     // 2. Calcular nuevo promedio, total y desglose por cada estrella desde user_reseñas
-    const { data: allVotes } = await supabase
-      .from('user_reseñas')
-      .select('stars')
-      .eq('target_user_id', studentId);
+    const uuids = rawIds.filter(id => UUID_REGEX.test(id));
+    const nonUuids = rawIds.filter(id => !UUID_REGEX.test(id));
 
-    if (allVotes && allVotes.length > 0) {
-      const sum = allVotes.reduce((acc, curr) => acc + Number(curr.stars), 0);
-      const newScore = parseFloat((sum / allVotes.length).toFixed(1));
-      const totalRatings = allVotes.length;
-
-      const stars1 = allVotes.filter(v => Math.round(Number(v.stars)) === 1).length;
-      const stars2 = allVotes.filter(v => Math.round(Number(v.stars)) === 2).length;
-      const stars3 = allVotes.filter(v => Math.round(Number(v.stars)) === 3).length;
-      const stars4 = allVotes.filter(v => Math.round(Number(v.stars)) === 4).length;
-      const stars5 = allVotes.filter(v => Math.round(Number(v.stars)) === 5).length;
-
-      await Promise.all([
-        supabase
-          .from('students')
-          .update({
-            score: newScore,
-            total_ratings: totalRatings,
-            stars_1: stars1,
-            stars_2: stars2,
-            stars_3: stars3,
-            stars_4: stars4,
-            stars_5: stars5,
-          })
-          .eq('id', studentId),
-        supabase
-          .from('users')
-          .update({
-            score: newScore,
-            total_ratings: totalRatings,
-            stars_1: stars1,
-            stars_2: stars2,
-            stars_3: stars3,
-            stars_4: stars4,
-            stars_5: stars5,
-          })
-          .or(`id.eq.${studentId},claimed_student_id.eq.${studentId}`),
-      ]);
-
-      return { success: true, new_score: newScore, total_ratings: totalRatings };
+    const allVotes: any[] = [];
+    if (uuids.length > 0) {
+      try {
+        let q = supabase.from('user_reseñas').select('stars');
+        if (uuids.length === 1) q = q.eq('target_user_id', uuids[0]);
+        else q = q.in('target_user_id', uuids);
+        const { data, error } = await q;
+        if (!error && data) allVotes.push(...data);
+      } catch (e) {}
+    }
+    if (nonUuids.length > 0) {
+      try {
+        let q = supabase.from('user_reseñas').select('stars');
+        if (nonUuids.length === 1) q = q.eq('target_user_id', nonUuids[0]);
+        else q = q.in('target_user_id', nonUuids);
+        const { data, error } = await q;
+        if (!error && data) allVotes.push(...data);
+      } catch (e) {}
     }
 
-    const singleStar = Math.round(stars);
-    await Promise.all([
-      supabase
-        .from('students')
-        .update({
-          score: stars,
-          total_ratings: 1,
-          stars_1: singleStar === 1 ? 1 : 0,
-          stars_2: singleStar === 2 ? 1 : 0,
-          stars_3: singleStar === 3 ? 1 : 0,
-          stars_4: singleStar === 4 ? 1 : 0,
-          stars_5: singleStar === 5 ? 1 : 0,
-        })
-        .eq('id', studentId),
-      supabase
-        .from('users')
-        .update({
-          score: stars,
-          total_ratings: 1,
-          stars_1: singleStar === 1 ? 1 : 0,
-          stars_2: singleStar === 2 ? 1 : 0,
-          stars_3: singleStar === 3 ? 1 : 0,
-          stars_4: singleStar === 4 ? 1 : 0,
-          stars_5: singleStar === 5 ? 1 : 0,
-        })
-        .or(`id.eq.${studentId},claimed_student_id.eq.${studentId}`),
-    ]);
+    const totalRatings = allVotes.length > 0 ? allVotes.length : 1;
+    const sum = allVotes.length > 0 
+      ? allVotes.reduce((acc, curr) => acc + Number(curr.stars), 0)
+      : cleanStars;
+    const newScore = parseFloat((sum / totalRatings).toFixed(1));
 
-    return { success: true, new_score: stars, total_ratings: 1 };
+    const stars1 = allVotes.filter(v => Math.round(Number(v.stars)) === 1).length;
+    const stars2 = allVotes.filter(v => Math.round(Number(v.stars)) === 2).length;
+    const stars3 = allVotes.filter(v => Math.round(Number(v.stars)) === 3).length;
+    const stars4 = allVotes.filter(v => Math.round(Number(v.stars)) === 4).length;
+    const stars5 = allVotes.filter(v => Math.round(Number(v.stars)) === 5).length;
+
+    const breakdown = {
+      1: stars1,
+      2: stars2,
+      3: stars3,
+      4: stars4,
+      5: stars5,
+    };
+
+    const updatePayload = {
+      score: newScore,
+      total_ratings: totalRatings,
+      stars_1: stars1,
+      stars_2: stars2,
+      stars_3: stars3,
+      stars_4: stars4,
+      stars_5: stars5,
+    };
+
+    // Actualizar tabla 'users'
+    if (uuids.length > 0) {
+      for (const uidItem of uuids) {
+        try {
+          await supabase.from('users').update(updatePayload).eq('id', uidItem);
+        } catch (e) {}
+      }
+    }
+    if (nonUuids.length > 0) {
+      for (const slugItem of nonUuids) {
+        try {
+          await supabase.from('users').update(updatePayload).eq('claimed_student_id', slugItem);
+        } catch (e) {}
+      }
+    }
+
+    // Actualizar tabla 'students'
+    for (const sid of rawIds) {
+      try {
+        await supabase.from('students').update(updatePayload).eq('id', sid);
+      } catch (e) {}
+    }
+
+    return { 
+      success: true, 
+      new_score: newScore, 
+      total_ratings: totalRatings,
+      breakdown,
+      today_votes_count: todayVotes.length + 1
+    };
   } catch (err: any) {
-    console.error('Error al registrar calificación de estudiante:', err);
+    console.error('Error al registrar calificación de estudiante/usuario:', err);
     return { success: false, new_score: 0, total_ratings: 0, error: err.message };
   }
 }
