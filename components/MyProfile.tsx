@@ -60,7 +60,9 @@ import {
   getStudentLoveMessages,
   StudentLoveMessage,
   submitStudentVote,
-  createStudentLoveMessage
+  createStudentLoveMessage,
+  deleteStudentLoveMessage,
+  toggleStudentLoveMessageHeart
 } from '@/src/lib/students';
 import { 
   getUserActitudCounts, 
@@ -308,7 +310,15 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         setLoveMessageText('');
         setLoveMessageSuccess('¡Mensaje de amor enviado exitosamente!');
         if (res.data) {
-          setClaimedLoveMessages(prev => [res.data!, ...prev.filter(m => m.id !== res.data!.id)]);
+          const freshMessage: StudentLoveMessage = {
+            ...res.data,
+            author_name: anonAuthorName,
+            author_avatar: null,
+            author_gender: (selectedGender as any) || (user?.uid ? localStorage.getItem(`user_gender_${user.uid}`) : null) || (typeof window !== 'undefined' ? localStorage.getItem('starryz_user_gender') : null),
+            has_hearted: false,
+            hearts_count: 0
+          };
+          setClaimedLoveMessages(prev => [freshMessage, ...prev.filter(m => m.id !== res.data!.id)]);
         }
         setTimeout(() => setLoveMessageSuccess(null), 4000);
       } else {
@@ -318,6 +328,61 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       setLoveMessageError(err.message || 'Error al enviar mensaje.');
     } finally {
       setSubmittingLoveMessage(false);
+    }
+  };
+
+  const handleDeleteLoveMessage = async (messageId: number | string) => {
+    if (!user?.uid) return;
+    try {
+      const targetUserId = dbUser?.id || uid || claimedStudent?.id || '';
+      await deleteStudentLoveMessage(messageId, user.uid, targetUserId);
+      setClaimedLoveMessages(prev => prev.filter(m => String(m.id) !== String(messageId)));
+    } catch (err) {
+      console.error('Error al eliminar mensaje de amor:', err);
+    }
+  };
+
+  const handleToggleLoveMessageHeart = async (messageId: number | string) => {
+    if (!user?.uid) {
+      setErrorMsg('Debes iniciar sesión para reaccionar con un corazón.');
+      return;
+    }
+    const targetUserId = dbUser?.id || uid || claimedStudent?.id || '';
+    
+    // Actualización optimista inmediata
+    setClaimedLoveMessages(prev =>
+      prev.map(msg => {
+        if (String(msg.id) === String(messageId)) {
+          const currentlyHearted = !!msg.has_hearted;
+          const currentCount = Number(msg.hearts_count) || 0;
+          return {
+            ...msg,
+            has_hearted: !currentlyHearted,
+            hearts_count: currentlyHearted ? Math.max(0, currentCount - 1) : currentCount + 1,
+          };
+        }
+        return msg;
+      })
+    );
+
+    try {
+      const res = await toggleStudentLoveMessageHeart(messageId, user.uid, targetUserId);
+      if (res.success) {
+        setClaimedLoveMessages(prev =>
+          prev.map(msg => {
+            if (String(msg.id) === String(messageId)) {
+              return {
+                ...msg,
+                has_hearted: res.hasHearted,
+                hearts_count: res.heartsCount,
+              };
+            }
+            return msg;
+          })
+        );
+      }
+    } catch (err) {
+      console.error('Error al reaccionar a mensaje de amor:', err);
     }
   };
 
@@ -1483,13 +1548,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <span className={claimedMainTab === 'crushes' ? 'inline' : 'hidden sm:inline'}>
                   Crushes
                 </span>
-                {((claimedStudent?.crushes_count || 0) > 0) && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black ${
-                    claimedMainTab === 'crushes' ? 'bg-black text-[#eab308]' : 'bg-pink-500/20 text-pink-300'
-                  }`}>
-                    {claimedStudent?.crushes_count}
-                  </span>
-                )}
               </button>
 
             </div>
@@ -1686,15 +1744,32 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                         : 'Expresa tu admiración marcando a este usuario como tu crush.'}
                     </p>
                   </div>
-                  <div className="px-3 py-1 rounded-full bg-pink-500/15 border border-pink-500/30 text-pink-400 text-xs font-black tracking-wider uppercase flex items-center gap-1.5">
-                    <span>💘 {crushesCount} Flechazos</span>
-                  </div>
                 </div>
 
                 <div className="p-6 rounded-2xl bg-gradient-to-b from-pink-950/20 to-[#0e0e0e] border border-pink-500/20 text-center space-y-3 shadow-md">
-                  <div className="w-16 h-16 mx-auto rounded-full bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400 shadow-[0_0_20px_rgba(236,72,153,0.2)]">
-                    <Heart className={`w-8 h-8 ${hasCrushedUser ? 'fill-pink-500 text-pink-500 scale-110' : 'fill-pink-500/30 text-pink-400'} animate-pulse`} />
-                  </div>
+                  {/* Corazón interactivo para votar/desvotar Crush */}
+                  <button
+                    type="button"
+                    onClick={isSelfProfile ? undefined : handleToggleCrush}
+                    disabled={isSelfProfile}
+                    className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center transition-all duration-300 select-none ${
+                      isSelfProfile 
+                        ? 'bg-pink-500/10 border border-pink-500/30 text-pink-400 cursor-default'
+                        : hasCrushedUser 
+                        ? 'bg-pink-500/25 border-2 border-pink-500 text-pink-500 shadow-[0_0_35px_rgba(236,72,153,0.5)] ring-4 ring-pink-500/25 scale-105 cursor-pointer active:scale-95' 
+                        : 'bg-[#141414] hover:bg-[#1f1f1f] border-2 border-zinc-800 hover:border-pink-500/50 text-zinc-400 hover:text-pink-400 hover:shadow-[0_0_20px_rgba(236,72,153,0.25)] cursor-pointer active:scale-95'
+                    }`}
+                    title={isSelfProfile ? 'Tu propio perfil' : hasCrushedUser ? 'Quitar flechazo (Crush)' : 'Marcar como Crush'}
+                  >
+                    <Heart 
+                      className={`w-10 h-10 transition-transform duration-200 ${
+                        hasCrushedUser 
+                          ? 'fill-pink-500 text-pink-500 scale-110' 
+                          : 'fill-transparent text-pink-400 stroke-2 hover:scale-110'
+                      }`} 
+                    />
+                  </button>
+
                   <div>
                     <div className="text-4xl font-black text-white">
                       {crushesCount}
@@ -1702,25 +1777,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     <p className="text-xs text-zinc-400 mt-1 uppercase font-bold tracking-wider">
                       {crushesCount === 1 ? 'Persona le tiene como crush' : 'Personas le tienen como crush'}
                     </p>
+                    {!isSelfProfile && (
+                      <p className="text-[11px] text-pink-400/90 font-medium mt-1">
+                        {hasCrushedUser ? '✓ Es tu crush (toca el corazón para quitar)' : 'Toca el corazón para marcarlo como tu crush'}
+                      </p>
+                    )}
                   </div>
-
-                  {/* Botón interactivo para marcar/desmarcar Crush cuando es perfil de otro usuario */}
-                  {!isSelfProfile && (
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={handleToggleCrush}
-                        className={`px-6 py-2.5 rounded-full font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer shadow-md active:scale-95 ${
-                          hasCrushedUser
-                            ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)] hover:bg-pink-600'
-                            : 'bg-zinc-900 hover:bg-zinc-800 text-pink-400 border border-pink-500/40 hover:border-pink-500'
-                        }`}
-                      >
-                        <Heart className={`w-4 h-4 ${hasCrushedUser ? 'fill-white' : 'fill-pink-500/30'}`} />
-                        <span>{hasCrushedUser ? '✓ Es tu Crush (Quitar Flechazo)' : '💘 Marcar como mi Crush'}</span>
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 {/* FORMULARIO DE MENSAJE DE AMOR (Se activa cuando has dado flechazo a este usuario) */}
@@ -1819,34 +1881,70 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {claimedLoveMessages.map((msg) => (
-                        <div 
-                          key={msg.id}
-                          className="p-4 rounded-xl bg-[#0f0f0f] border border-zinc-800/60 space-y-2 shadow-sm"
-                        >
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-pink-400 flex items-center gap-1.5 font-mono">
-                              <span>💌</span>
-                              <span>
-                                {msg.user_uid
-                                  ? `Anónimo-${msg.user_uid.substring(0, 8)}`
-                                  : (msg.author_name?.startsWith('Anónimo-') ? msg.author_name : 'Anónimo')}
+                      {claimedLoveMessages.map((msg) => {
+                        const isOwnMessage = user?.uid && msg.user_uid === user.uid;
+
+                        return (
+                          <div 
+                            key={msg.id}
+                            className="p-4 rounded-xl bg-[#0f0f0f] border border-zinc-800/60 space-y-3 shadow-sm hover:border-zinc-700/60 transition-colors"
+                          >
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-pink-400 flex items-center gap-1.5 font-mono">
+                                <span>💌</span>
+                                <span>
+                                  {msg.user_uid
+                                    ? `Anónimo-${msg.user_uid.substring(0, 8)}`
+                                    : (msg.author_name?.startsWith('Anónimo-') ? msg.author_name : 'Anónimo')}
+                                </span>
+                                <GenderBadge gender={msg.author_gender} size="sm" />
                               </span>
-                              <GenderBadge gender={msg.author_gender} size="sm" />
-                            </span>
-                            <span className="text-[10px] text-zinc-500 font-mono">
-                              {msg.created_at ? new Date(msg.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : ''}
-                            </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-zinc-500 font-mono">
+                                  {msg.created_at ? new Date(msg.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : ''}
+                                </span>
+                                {isOwnMessage && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLoveMessage(msg.id)}
+                                    className="text-zinc-500 hover:text-rose-400 p-1 rounded-lg hover:bg-rose-950/30 transition-all cursor-pointer"
+                                    title="Eliminar mi mensaje"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <p className="text-sm text-zinc-300 italic whitespace-pre-wrap leading-relaxed">
+                              "{msg.message}"
+                            </p>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-zinc-800/40">
+                              {/* Botón interactivo para reaccionar con corazón a la tabla user_love_reactions */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleLoveMessageHeart(msg.id)}
+                                className={`group/heart inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer active:scale-95 ${
+                                  msg.has_hearted
+                                    ? 'bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/50 shadow-[0_0_12px_rgba(236,72,153,0.3)]'
+                                    : 'bg-[#181818] hover:bg-[#222222] text-zinc-400 hover:text-pink-400 border border-zinc-800 hover:border-pink-500/30'
+                                }`}
+                                title={msg.has_hearted ? 'Quitar reacción' : 'Dejar corazón'}
+                              >
+                                <Heart 
+                                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                    msg.has_hearted 
+                                      ? 'fill-pink-500 text-pink-500 scale-110' 
+                                      : 'fill-transparent text-current stroke-2 group-hover/heart:scale-110'
+                                  }`} 
+                                />
+                                <span className="font-mono">{msg.hearts_count || 0}</span>
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-sm text-zinc-300 italic whitespace-pre-wrap leading-relaxed">
-                            "{msg.message}"
-                          </p>
-                          <div className="flex items-center gap-2 pt-1 text-xs text-zinc-500">
-                            <Heart className="w-3.5 h-3.5 fill-pink-500 text-pink-500" />
-                            <span>{msg.hearts_count || 0} reacciones</span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
