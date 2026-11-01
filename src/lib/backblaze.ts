@@ -26,15 +26,34 @@ export async function uploadAvatarToBackblaze(
   compressed: CompressionResult,
   previousPhotoUrl?: string | null
 ): Promise<UploadAvatarResponse> {
+  return uploadImageToBackblaze(userId, compressed, {
+    folder: 'avatars',
+    previousPhotoUrl: previousPhotoUrl || null,
+  });
+}
+
+/**
+ * Sube una imagen genérica (avatar o publicación) a Backblaze B2 a través del endpoint seguro /api/upload-avatar
+ */
+export async function uploadImageToBackblaze(
+  userId: string,
+  compressed: CompressionResult,
+  options: {
+    folder?: 'avatars' | 'publications';
+    previousPhotoUrl?: string | null;
+  } = {}
+): Promise<UploadAvatarResponse> {
   const currentUser = getStoredUser();
   const token = getStoredToken();
+  const folder = options.folder || 'avatars';
 
   const payload = {
     imageBase64: compressed.base64,
     contentType: compressed.format,
     userId,
     userEmail: currentUser?.email || null,
-    previousPhotoUrl: previousPhotoUrl || null,
+    previousPhotoUrl: options.previousPhotoUrl || null,
+    folder,
   };
 
   const payloadString = JSON.stringify(payload);

@@ -35,7 +35,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const body: any = await request.json();
-    const { imageBase64, contentType, userId, fileName: customFileName } = body;
+    const { imageBase64, contentType, userId, fileName: customFileName, folder } = body;
 
     if (!imageBase64) {
       return new Response(JSON.stringify({ error: 'imageBase64 es obligatorio' }), {
@@ -69,7 +69,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const ext = mime.includes('webp') ? 'webp' : 'jpg';
     const cleanUserId = (userId || 'user').replace(/[^a-zA-Z0-9_-]/g, '');
     const timestamp = Date.now();
-    const fileName = customFileName || `avatars/${cleanUserId}-${timestamp}.${ext}`;
+    const targetFolder = folder === 'publications' ? 'publications' : 'avatars';
+    const fileName = customFileName || `${targetFolder}/${cleanUserId}-${timestamp}.${ext}`;
 
     // 1. Autorizar con Backblaze B2
     const basicAuth = btoa(`${B2_KEY_ID}:${B2_APPLICATION_KEY}`);
@@ -131,36 +132,38 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const baseUrl = cdnDomain ? cdnDomain.trim().replace(/\/$/, '') : downloadUrl;
     const publicUrl = `${baseUrl}/file/${B2_BUCKET_NAME}/${fileName}`;
 
-    // 4. Limpieza automática: Buscar y eliminar fotos anteriores del mismo usuario
-    try {
-      const prefix = `avatars/${cleanUserId}-`;
-      const listRes = await fetch(
-        `${apiUrl}/b2api/v3/b2_list_file_names?bucketId=${B2_BUCKET_ID}&prefix=${encodeURIComponent(prefix)}&maxFileCount=20`,
-        { headers: { Authorization: token } }
-      );
-
-      if (listRes.ok) {
-        const listData: any = await listRes.json();
-        const oldFiles = (listData.files || []).filter(
-          (f: any) => f.fileName !== fileName && f.fileId !== uploadResult.fileId
+    // 4. Limpieza automática: Buscar y eliminar fotos anteriores del mismo avatar
+    if (targetFolder === 'avatars') {
+      try {
+        const prefix = `avatars/${cleanUserId}-`;
+        const listRes = await fetch(
+          `${apiUrl}/b2api/v3/b2_list_file_names?bucketId=${B2_BUCKET_ID}&prefix=${encodeURIComponent(prefix)}&maxFileCount=20`,
+          { headers: { Authorization: token } }
         );
 
-        for (const old of oldFiles) {
-          await fetch(`${apiUrl}/b2api/v3/b2_delete_file_version`, {
-            method: 'POST',
-            headers: { 
-              Authorization: token, 
-              'Content-Type': 'application/json' 
-            },
-            body: JSON.stringify({
-              fileName: old.fileName,
-              fileId: old.fileId,
-            }),
-          });
+        if (listRes.ok) {
+          const listData: any = await listRes.json();
+          const oldFiles = (listData.files || []).filter(
+            (f: any) => f.fileName !== fileName && f.fileId !== uploadResult.fileId
+          );
+
+          for (const old of oldFiles) {
+            await fetch(`${apiUrl}/b2api/v3/b2_delete_file_version`, {
+              method: 'POST',
+              headers: { 
+                Authorization: token, 
+                'Content-Type': 'application/json' 
+              },
+              body: JSON.stringify({
+                fileName: old.fileName,
+                fileId: old.fileId,
+              }),
+            });
+          }
         }
+      } catch (cleanErr) {
+        console.warn('Aviso no crítico al limpiar foto anterior:', cleanErr);
       }
-    } catch (cleanErr) {
-      console.warn('Aviso no crítico al limpiar foto anterior:', cleanErr);
     }
 
     return new Response(

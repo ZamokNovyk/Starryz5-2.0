@@ -54,6 +54,8 @@ export default function AvatarUploadModal({
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const [compressing, setCompressing] = useState(false);
+  const [compressionProgress, setCompressionProgress] = useState<number>(0);
+  const [compressionStatusText, setCompressionStatusText] = useState<string>('');
   const [compressionResult, setCompressionResult] = useState<CompressionResult | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgressMsg, setUploadProgressMsg] = useState<string>('');
@@ -71,8 +73,15 @@ export default function AvatarUploadModal({
   ) => {
     try {
       setCompressing(true);
-      const res = await compressAvatarToTarget(img, fileSize, crop);
+      setCompressionProgress(10);
+      setCompressionStatusText('Iniciando compresión...');
+      const res = await compressAvatarToTarget(img, fileSize, crop, (percent, msg) => {
+        setCompressionProgress(percent);
+        if (msg) setCompressionStatusText(msg);
+      });
       setCompressionResult(res);
+      setCompressionProgress(100);
+      setCompressionStatusText('Compresión completada (100%)');
     } catch (err: any) {
       console.error('Error al optimizar imagen:', err);
       setErrorMsg(err.message || 'Error al procesar la imagen');
@@ -120,6 +129,8 @@ export default function AvatarUploadModal({
 
     try {
       setCompressing(true);
+      setCompressionProgress(10);
+      setCompressionStatusText('Iniciando compresión...');
       const img = await loadImageFromFile(file);
       setSelectedFile(file);
       setLoadedImage(img);
@@ -135,8 +146,13 @@ export default function AvatarUploadModal({
         viewportSize: VIEWPORT_SIZE,
       };
 
-      const result = await compressAvatarToTarget(img, file.size, initialCrop);
+      const result = await compressAvatarToTarget(img, file.size, initialCrop, (percent, msg) => {
+        setCompressionProgress(percent);
+        if (msg) setCompressionStatusText(msg);
+      });
       setCompressionResult(result);
+      setCompressionProgress(100);
+      setCompressionStatusText('Compresión completada (100%)');
     } catch (err: any) {
       console.error('Error al cargar imagen:', err);
       setErrorMsg(err.message || 'No se pudo cargar la imagen seleccionada');
@@ -443,6 +459,31 @@ export default function AvatarUploadModal({
                   </button>
                 </div>
               </div>
+
+              {/* Barra de progreso de compresión (0% a 100%) */}
+              {(compressing || compressionProgress > 0) && (
+                <div className="p-3.5 rounded-2xl bg-zinc-900/90 border border-zinc-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-300 font-semibold flex items-center gap-1.5">
+                      {compressing && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#eab308]" />}
+                      {compressionStatusText || 'Comprimiendo imagen...'}
+                    </span>
+                    <span className="font-mono text-[#eab308] font-bold">
+                      {compressionProgress}%
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-zinc-800 overflow-hidden relative">
+                    <div 
+                      className="h-full bg-gradient-to-r from-amber-500 via-yellow-400 to-emerald-400 rounded-full transition-all duration-200 ease-out"
+                      style={{ width: `${Math.min(100, Math.max(0, compressionProgress))}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+                    <span>Límite: 5 MB</span>
+                    <span className="text-emerald-400 font-bold">Rango estricto: 90 - 100 KB</span>
+                  </div>
+                </div>
+              )}
 
               {/* Métricas de Optimización y Vista Previa Circular */}
               {compressionResult && (

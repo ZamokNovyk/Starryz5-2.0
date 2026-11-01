@@ -38,7 +38,9 @@ import {
   X,
   CreditCard,
   Lock,
-  MessageSquare
+  MessageSquare,
+  Layers,
+  Send
 } from 'lucide-react';
 import { 
   getUserProfessorSubscriptions, 
@@ -57,7 +59,8 @@ import {
   StudentReviewItem,
   getStudentLoveMessages,
   StudentLoveMessage,
-  submitStudentVote
+  submitStudentVote,
+  createStudentLoveMessage
 } from '@/src/lib/students';
 import { 
   getUserActitudCounts, 
@@ -75,6 +78,7 @@ import AvatarUploadModal from '@/components/Modals/AvatarUploadModal';
 import GenderBadge from '@/components/GenderBadge';
 import CountrySelector from '@/components/CountrySelector';
 import { findCountry, getFlagUrl } from '@/src/data/countries';
+import UserPublicationsView from '@/components/UserPublicationsView';
 
 interface SupabaseUser {
   id: string;
@@ -153,7 +157,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
   // Estados para el perfil transformado tras reclamar perfil con DNI
   const [claimedStudent, setClaimedStudent] = useState<Student | null>(null);
-  const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'reseñas' | 'crushes'>('mis_datos');
+  const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'publicaciones' | 'reseñas' | 'crushes'>('mis_datos');
   const [claimedRatingBreakdown, setClaimedRatingBreakdown] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [claimedReviews, setClaimedReviews] = useState<StudentReviewItem[]>([]);
   const [claimedLoveMessages, setClaimedLoveMessages] = useState<StudentLoveMessage[]>([]);
@@ -259,6 +263,61 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       setCrushesCount(res.newCount);
     } catch (err) {
       console.error('Error al votar crush:', err);
+    }
+  };
+
+  // Estados para envío de mensajes de amor
+  const [loveMessageText, setLoveMessageText] = useState('');
+  const [submittingLoveMessage, setSubmittingLoveMessage] = useState(false);
+  const [loveMessageSuccess, setLoveMessageSuccess] = useState<string | null>(null);
+  const [loveMessageError, setLoveMessageError] = useState<string | null>(null);
+
+  const handleSendLoveMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.uid) {
+      setLoveMessageError('Debes iniciar sesión para enviar un mensaje.');
+      return;
+    }
+    const trimmed = loveMessageText.trim();
+    if (!trimmed) {
+      setLoveMessageError('El mensaje no puede estar vacío.');
+      return;
+    }
+    if (trimmed.length > 500) {
+      setLoveMessageError('El mensaje no puede superar los 500 caracteres.');
+      return;
+    }
+
+    try {
+      setSubmittingLoveMessage(true);
+      setLoveMessageError(null);
+      const targetUserId = dbUser?.id || uid || claimedStudent?.id;
+      if (!targetUserId) return;
+
+      const anonAuthorName = `Anónimo-${user.uid.substring(0, 8)}`;
+      const res = await createStudentLoveMessage(
+        targetUserId,
+        user.uid,
+        anonAuthorName,
+        null,
+        trimmed,
+        dbUser?.display_name || undefined
+      );
+
+      if (res.success) {
+        setLoveMessageText('');
+        setLoveMessageSuccess('¡Mensaje de amor enviado exitosamente!');
+        if (res.data) {
+          setClaimedLoveMessages(prev => [res.data!, ...prev.filter(m => m.id !== res.data!.id)]);
+        }
+        setTimeout(() => setLoveMessageSuccess(null), 4000);
+      } else {
+        setLoveMessageError(res.error || 'No se pudo enviar el mensaje.');
+      }
+    } catch (err: any) {
+      setLoveMessageError(err.message || 'Error al enviar mensaje.');
+    } finally {
+      setSubmittingLoveMessage(false);
     }
   };
 
@@ -1373,7 +1432,25 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 }`}
               >
                 <User className="w-4 h-4 flex-shrink-0" />
-                <span>{isOwnProfile ? 'Mis Datos' : 'Datos'}</span>
+                <span className={claimedMainTab === 'mis_datos' ? 'inline' : 'hidden sm:inline'}>
+                  {isOwnProfile ? 'Mis Datos' : 'Datos'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setClaimedMainTab('publicaciones')}
+                title="Publicaciones"
+                className={`py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  claimedMainTab === 'publicaciones'
+                    ? 'bg-[#eab308] text-black font-extrabold shadow-sm px-4'
+                    : 'text-zinc-400 hover:text-white hover:bg-[#151515] px-3 sm:px-4'
+                }`}
+              >
+                <Layers className="w-4 h-4 flex-shrink-0 text-current" />
+                <span className={claimedMainTab === 'publicaciones' ? 'inline' : 'hidden sm:inline'}>
+                  Publicaciones
+                </span>
               </button>
 
               <button
@@ -1387,7 +1464,9 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 }`}
               >
                 <Star className="w-4 h-4 flex-shrink-0 text-current" />
-                <span>Reseñas</span>
+                <span className={claimedMainTab === 'reseñas' ? 'inline' : 'hidden sm:inline'}>
+                  Reseñas
+                </span>
               </button>
 
               <button
@@ -1401,7 +1480,9 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 }`}
               >
                 <Heart className="w-4 h-4 flex-shrink-0 text-current" />
-                <span>Crushes</span>
+                <span className={claimedMainTab === 'crushes' ? 'inline' : 'hidden sm:inline'}>
+                  Crushes
+                </span>
                 {((claimedStudent?.crushes_count || 0) > 0) && (
                   <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black ${
                     claimedMainTab === 'crushes' ? 'bg-black text-[#eab308]' : 'bg-pink-500/20 text-pink-300'
@@ -1419,38 +1500,44 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setProfileTab('info')}
-                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  title="Información"
+                  className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     profileTab === 'info'
-                      ? 'bg-zinc-800 text-white font-extrabold'
-                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                      ? 'bg-zinc-800 text-white font-extrabold px-3'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 px-2.5 sm:px-3'
                   }`}
                 >
-                  <span>Información</span>
+                  <UserCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className={profileTab === 'info' ? 'inline' : 'hidden sm:inline'}>Información</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setProfileTab('interactions')}
-                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  title="Mis Interacciones"
+                  className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     profileTab === 'interactions'
-                      ? 'bg-zinc-800 text-white font-extrabold'
-                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                      ? 'bg-zinc-800 text-white font-extrabold px-3'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 px-2.5 sm:px-3'
                   }`}
                 >
-                  <span>Mis Interacciones</span>
+                  <Activity className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className={profileTab === 'interactions' ? 'inline' : 'hidden sm:inline'}>Mis Interacciones</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setProfileTab('subscriptions')}
-                  className={`py-1.5 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  title="Suscripciones"
+                  className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     profileTab === 'subscriptions'
-                      ? 'bg-zinc-800 text-white font-extrabold'
-                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                      ? 'bg-zinc-800 text-white font-extrabold px-3'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 px-2.5 sm:px-3'
                   }`}
                 >
+                  <Bell className="w-3.5 h-3.5 flex-shrink-0" />
                   <div className="relative flex items-center justify-center">
-                    <span>Suscripciones</span>
+                    <span className={profileTab === 'subscriptions' ? 'inline' : 'hidden sm:inline'}>Suscripciones</span>
                     {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
                       <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
                         {profSubscriptions.length + studentSubscriptions.length}
@@ -1463,7 +1550,17 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           </div>
 
           {/* RENDERIZADO CONDICIONAL DE CONTENIDO DE PESTAÑAS */}
-          {claimedMainTab === 'reseñas' ? (
+          {claimedMainTab === 'publicaciones' ? (
+            /* TAB: PUBLICACIONES DEL USUARIO */
+            <UserPublicationsView
+              userId={uid || user?.uid || dbUser?.id || ''}
+              isOwnProfile={isOwnProfile}
+              currentUserDisplayName={dbUser?.display_name || user?.displayName}
+              currentUserUsername={dbUser?.username}
+              currentUserAvatarUrl={dbUser?.photo_url || user?.photoURL}
+              currentUserBadge="👑 ELITE 4.5+"
+            />
+          ) : claimedMainTab === 'reseñas' ? (
             /* TAB: RESEÑAS DEL USUARIO / ESTUDIANTE */
             <div className="space-y-6 animate-in fade-in duration-300">
               <div className="bg-[#050505] border border-zinc-800/60 rounded-2xl p-6 sm:p-8 space-y-6">
@@ -1625,6 +1722,89 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     </div>
                   )}
                 </div>
+
+                {/* FORMULARIO DE MENSAJE DE AMOR (Se activa cuando has dado flechazo a este usuario) */}
+                {!isSelfProfile && (
+                  hasCrushedUser ? (
+                    <div className="p-5 rounded-2xl bg-gradient-to-b from-[#181119] to-[#0e0e11] border border-pink-500/30 space-y-3 shadow-lg animate-in fade-in duration-300">
+                      <div className="flex items-center gap-2 text-pink-400 font-extrabold text-xs uppercase tracking-wider">
+                        <Sparkles className="w-4 h-4 text-pink-400" />
+                        <span>¡Flechazo activo! Déjale un mensaje de amor o admiración</span>
+                      </div>
+                      <p className="text-xs text-zinc-400">
+                        Tu mensaje será 100% anónimo para proteger tu identidad y aparecerá en su muro de flechazos.
+                      </p>
+
+                      {loveMessageError && (
+                        <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                          <span>{loveMessageError}</span>
+                        </div>
+                      )}
+
+                      {loveMessageSuccess && (
+                        <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          <span>{loveMessageSuccess}</span>
+                        </div>
+                      )}
+
+                      <form onSubmit={handleSendLoveMessage} className="space-y-3">
+                        <div className="relative">
+                          <textarea
+                            rows={3}
+                            maxLength={500}
+                            value={loveMessageText}
+                            onChange={(e) => setLoveMessageText(e.target.value)}
+                            placeholder="Escribe tu mensaje de amor, admiración o confesión sincera..."
+                            className="w-full px-4 py-3 bg-[#0a0a0d] border border-pink-500/20 focus:border-pink-500 rounded-xl text-white text-xs sm:text-sm outline-none transition-colors placeholder:text-zinc-600 resize-none"
+                          />
+                          <span className="absolute bottom-2.5 right-3 text-[10px] font-mono text-zinc-500">
+                            {loveMessageText.length}/500
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[11px] text-zinc-500 font-mono flex items-center gap-1">
+                            <span>🔒</span>
+                            <span>Envío 100% Anónimo</span>
+                          </span>
+                          <button
+                            type="submit"
+                            disabled={submittingLoveMessage || !loveMessageText.trim()}
+                            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {submittingLoveMessage ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Enviando...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-4 h-4" />
+                                <span>Enviar Mensaje</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  ) : (
+                    <div className="p-5 rounded-2xl bg-[#0e0e11] border border-pink-500/15 text-center space-y-3">
+                      <div className="w-10 h-10 rounded-full bg-pink-500/10 border border-pink-500/20 flex items-center justify-center mx-auto text-pink-400">
+                        <Lock className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <h5 className="text-xs font-black text-white uppercase tracking-wider">
+                          Mensaje de Amor Bloqueado
+                        </h5>
+                        <p className="text-xs text-zinc-400 max-w-sm mx-auto">
+                          La opción de dejar un mensaje de amor se activa cuando votas por tu <strong>Crush</strong>. Toca el botón 💘 de arriba para dar tu flechazo y desbloquearla.
+                        </p>
+                      </div>
+                    </div>
+                  )
+                )}
 
                 <div className="space-y-4 pt-2">
                   <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
@@ -2084,14 +2264,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setInteractionFilter('knows')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     interactionFilter === 'knows'
                       ? 'bg-blue-600 text-white font-extrabold shadow-[0_0_15px_rgba(59,130,246,0.35)] ring-1 ring-blue-400'
                       : 'bg-[#121212] text-blue-400 hover:text-blue-300 border border-blue-500/20 hover:bg-blue-950/20'
                   }`}
                 >
                   <UserCheck className="w-3.5 h-3.5" />
-                  <span>Seguidos</span>
+                  <span className={interactionFilter === 'knows' ? 'inline' : 'hidden sm:inline'}>Seguidos</span>
                   <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
                     interactionFilter === 'knows' ? 'bg-black text-blue-300' : 'bg-blue-500/20 text-blue-300'
                   }`}>
@@ -2102,14 +2282,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setInteractionFilter('fans')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     interactionFilter === 'fans'
                       ? 'bg-pink-600 text-white font-extrabold shadow-[0_0_15px_rgba(236,72,153,0.35)] ring-1 ring-pink-400'
                       : 'bg-[#121212] text-pink-400 hover:text-pink-300 border border-pink-500/20 hover:bg-pink-950/20'
                   }`}
                 >
                   <Heart className="w-3.5 h-3.5 fill-current" />
-                  <span>Fans</span>
+                  <span className={interactionFilter === 'fans' ? 'inline' : 'hidden sm:inline'}>Fans</span>
                   <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
                     interactionFilter === 'fans' ? 'bg-black text-pink-300' : 'bg-pink-500/20 text-pink-300'
                   }`}>
@@ -2120,14 +2300,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setInteractionFilter('ratings')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     interactionFilter === 'ratings'
                       ? 'bg-[#eab308] text-black font-extrabold shadow-[0_0_15px_rgba(234,179,8,0.35)] ring-1 ring-amber-300'
                       : 'bg-[#121212] text-[#eab308] hover:text-amber-300 border border-[#eab308]/20 hover:bg-amber-950/20'
                   }`}
                 >
                   <Star className="w-3.5 h-3.5 fill-current" />
-                  <span>Calificaciones</span>
+                  <span className={interactionFilter === 'ratings' ? 'inline' : 'hidden sm:inline'}>Calificaciones</span>
                   <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
                     interactionFilter === 'ratings' ? 'bg-black text-[#eab308]' : 'bg-amber-500/20 text-amber-300'
                   }`}>
@@ -2321,14 +2501,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setSubscriptionsSubTab('professors')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                     subscriptionsSubTab === 'professors'
                       ? 'bg-[#eab308] text-black shadow-[0_0_15px_rgba(234,179,8,0.3)] font-extrabold'
                       : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818]'
                   }`}
                 >
                   <GraduationCap className="w-4 h-4" />
-                  <span>Profesores</span>
+                  <span className={subscriptionsSubTab === 'professors' ? 'inline' : 'hidden sm:inline'}>Profesores</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
                     subscriptionsSubTab === 'professors' ? 'bg-black/20 text-black font-black' : 'bg-zinc-800 text-zinc-400'
                   }`}>
@@ -2339,14 +2519,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <button
                   type="button"
                   onClick={() => setSubscriptionsSubTab('students')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                     subscriptionsSubTab === 'students'
                       ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.3)] font-extrabold'
                       : 'bg-[#121212] text-zinc-400 hover:text-white border border-zinc-800 hover:bg-[#181818]'
                   }`}
                 >
                   <Users className="w-4 h-4" />
-                  <span>Estudiantes</span>
+                  <span className={subscriptionsSubTab === 'students' ? 'inline' : 'hidden sm:inline'}>Estudiantes</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
                     subscriptionsSubTab === 'students' ? 'bg-black/20 text-white font-black' : 'bg-zinc-800 text-zinc-400'
                   }`}>

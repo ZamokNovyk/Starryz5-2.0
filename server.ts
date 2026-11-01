@@ -153,10 +153,10 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // POST /api/upload-avatar - Subida de avatar a Backblaze B2 con verificación de seguridad
-  app.post('/api/upload-avatar', uploadAvatarLimiter, async (req, res) => {
+  // POST /api/upload-avatar y /api/upload-publication - Subida de imágenes a Backblaze B2
+  app.post(['/api/upload-avatar', '/api/upload-publication'], uploadAvatarLimiter, async (req, res) => {
     try {
-      const { imageBase64, contentType, userId, userEmail, fileName: customFileName } = req.body;
+      const { imageBase64, contentType, userId, userEmail, fileName: customFileName, folder } = req.body;
 
       if (!imageBase64) {
         return res.status(400).json({ error: 'imageBase64 es obligatorio' });
@@ -194,7 +194,8 @@ async function startServer() {
       const mime = contentType || 'image/webp';
       const ext = mime.includes('webp') ? 'webp' : 'jpg';
       const timestamp = Date.now();
-      const fileName = customFileName || `avatars/${cleanUserId}-${timestamp}.${ext}`;
+      const targetFolder = folder === 'publications' ? 'publications' : 'avatars';
+      const fileName = customFileName || `${targetFolder}/${cleanUserId}-${timestamp}.${ext}`;
 
       // 1. Autorizar con B2 (reintenta una vez si el token expiró)
       let auth;
@@ -247,37 +248,39 @@ async function startServer() {
 
       const uploadResult = await uploadRes.json();
 
-      // 4. Limpieza automática de fotos viejas del usuario para ahorrar almacenamiento
-      try {
-        const prefix = `avatars/${cleanUserId}-`;
-        const listRes = await fetch(
-          `${auth.apiUrl}/b2api/v3/b2_list_file_names?bucketId=${B2_BUCKET_ID}&prefix=${encodeURIComponent(prefix)}&maxFileCount=20`,
-          { headers: { Authorization: auth.token } }
-        );
-
-        if (listRes.ok) {
-          const listData = await listRes.json();
-          const oldFiles = (listData.files || []).filter(
-            (f: any) => f.fileName !== fileName && f.fileId !== uploadResult.fileId
+      // 4. Limpieza automática de fotos viejas del avatar del usuario para ahorrar almacenamiento
+      if (targetFolder === 'avatars') {
+        try {
+          const prefix = `avatars/${cleanUserId}-`;
+          const listRes = await fetch(
+            `${auth.apiUrl}/b2api/v3/b2_list_file_names?bucketId=${B2_BUCKET_ID}&prefix=${encodeURIComponent(prefix)}&maxFileCount=20`,
+            { headers: { Authorization: auth.token } }
           );
 
-          for (const old of oldFiles) {
-            await fetch(`${auth.apiUrl}/b2api/v3/b2_delete_file_version`, {
-              method: 'POST',
-              headers: { 
-                Authorization: auth.token, 
-                'Content-Type': 'application/json' 
-              },
-              body: JSON.stringify({
-                fileName: old.fileName,
-                fileId: old.fileId,
-              }),
-            });
-            console.log(`[Storage Cleanup] Foto anterior eliminada: ${old.fileName}`);
+          if (listRes.ok) {
+            const listData = await listRes.json();
+            const oldFiles = (listData.files || []).filter(
+              (f: any) => f.fileName !== fileName && f.fileId !== uploadResult.fileId
+            );
+
+            for (const old of oldFiles) {
+              await fetch(`${auth.apiUrl}/b2api/v3/b2_delete_file_version`, {
+                method: 'POST',
+                headers: { 
+                  Authorization: auth.token, 
+                  'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify({
+                  fileName: old.fileName,
+                  fileId: old.fileId,
+                }),
+              });
+              console.log(`[Storage Cleanup] Foto anterior eliminada: ${old.fileName}`);
+            }
           }
+        } catch (cleanErr) {
+          console.warn('[Storage Cleanup] Aviso no-bloqueante al purgar fotos viejas:', cleanErr);
         }
-      } catch (cleanErr) {
-        console.warn('[Storage Cleanup] Aviso no-bloqueante al purgar fotos viejas:', cleanErr);
       }
 
       // Public URL de la imagen subida (usa el dominio CDN de Cloudflare media.starryz5.com)

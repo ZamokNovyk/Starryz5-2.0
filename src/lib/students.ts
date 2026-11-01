@@ -1538,6 +1538,11 @@ export async function submitStudentVote(
           .update({
             score: newScore,
             total_ratings: totalRatings,
+            stars_1: stars1,
+            stars_2: stars2,
+            stars_3: stars3,
+            stars_4: stars4,
+            stars_5: stars5,
           })
           .or(`id.eq.${studentId},claimed_student_id.eq.${studentId}`),
       ]);
@@ -1564,6 +1569,11 @@ export async function submitStudentVote(
         .update({
           score: stars,
           total_ratings: 1,
+          stars_1: singleStar === 1 ? 1 : 0,
+          stars_2: singleStar === 2 ? 1 : 0,
+          stars_3: singleStar === 3 ? 1 : 0,
+          stars_4: singleStar === 4 ? 1 : 0,
+          stars_5: singleStar === 5 ? 1 : 0,
         })
         .or(`id.eq.${studentId},claimed_student_id.eq.${studentId}`),
     ]);
