@@ -882,7 +882,7 @@ export default function StudentProfile({
   const studentFullName = student.nombre_completo || `${student.nombre} ${student.apellidos}`;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6 animate-in fade-in duration-300">
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10 space-y-6 animate-in fade-in duration-300">
       
       {/* Volver y Compartir */}
       <div className="flex items-center justify-between">
@@ -965,108 +965,122 @@ export default function StudentProfile({
         </p>
       )}
 
-      {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen) */}
-      <div className="flex flex-col items-center text-center space-y-4 py-4">
-        <div className="relative">
-          {/* Avatar circular */}
-          <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-zinc-800 bg-[#181818] shadow-2xl flex items-center justify-center">
-            {student.avatar_url ? (
-              <img
-                src={student.avatar_url}
-                alt={studentFullName}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-white font-black text-4xl uppercase">
-                {student.nombre ? student.nombre.charAt(0) : 'E'}
+      {/* TARJETA BANNER SUPERIOR DEL ESTUDIANTE (Diseño horizontal ancho) */}
+      <div className="bg-[#0b0b0e] border border-zinc-800/80 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-6">
+        <div className="absolute top-0 left-0 right-0 h-28 bg-gradient-to-b from-amber-500/10 via-transparent to-transparent pointer-events-none" />
+
+        {/* Lado izquierdo: Avatar + Información principal */}
+        <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-7 w-full lg:w-auto text-center sm:text-left z-10">
+          
+          {/* Avatar squircle con glow */}
+          <div className="relative group flex-shrink-0">
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl p-1 bg-gradient-to-b from-amber-400/90 via-yellow-500/70 to-amber-600/50 shadow-[0_0_25px_rgba(251,191,36,0.3)] flex items-center justify-center">
+              <div className="w-full h-full rounded-[14px] sm:rounded-[22px] overflow-hidden bg-[#121212] flex items-center justify-center">
+                {student.avatar_url ? (
+                  <img
+                    src={student.avatar_url}
+                    alt={studentFullName}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-white font-black text-3xl sm:text-4xl uppercase">
+                    {student.nombre ? student.nombre.charAt(0) : 'E'}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          {/* Rating badge en la parte inferior derecha del avatar */}
-          <div className="absolute -bottom-1 right-2 bg-[#eab308] text-black font-black text-xs px-2 py-1 rounded-full shadow-lg border border-black flex items-center gap-0.5">
-            <span>{studentScore.toFixed(1)}</span>
-          </div>
-        </div>
-
-        {/* Nombre completo */}
-        <div className="flex items-center justify-center gap-2 flex-wrap">
-          <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight uppercase tracking-tight">
-            {studentFullName}
-          </h1>
-          <GenderBadge gender={student.gender} size="lg" />
-        </div>
-        <div className="flex items-center gap-2 flex-wrap justify-center">
-          <p className="px-3 py-1 rounded-full bg-[#181818] border border-zinc-800 text-zinc-400 text-[10px] uppercase font-bold tracking-widest">
-            ESTUDIANTE
-          </p>
-
-          {student.is_claimed ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold shadow-sm">
-              <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
-              <span>{isOwnProfile ? 'Tu Perfil Oficial Verificado' : 'Perfil Oficial Verificado'}</span>
             </div>
-          ) : !userHasClaimedAnyProfile ? (
-            <button
-              type="button"
-              onClick={() => setClaimModalOpen(true)}
-              className="px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black font-extrabold text-[11px] uppercase tracking-wider shadow-[0_0_20px_rgba(234,179,8,0.3)] transition-all flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95"
-              title="Reclamar este perfil con tu número de DNI"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Reclamar con DNI</span>
-            </button>
-          ) : null}
-        </div>
-      </div>
 
-      {/* METRIC CARDS (Yo te conozco / Fan - Diseñados en grilla de 2 columnas) */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* Seguir / Siguiendo */}
-        <div 
-          onClick={() => !isOwnProfile && handleInteractionToggle('knows')}
-          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all select-none duration-200 ${
-            isOwnProfile 
-              ? 'border-zinc-800/80 opacity-90 cursor-default'
-              : hasVotedKnow 
-              ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_15px_rgba(59,130,246,0.2)] cursor-pointer active:scale-[0.98]' 
-              : 'border-zinc-800/80 hover:border-blue-500/40 hover:bg-[#121212] cursor-pointer active:scale-[0.98]'
-          }`}
-          title={isOwnProfile ? 'Tus seguidores en la comunidad' : hasVotedKnow ? 'Dejar de seguir' : 'Seguir a este estudiante'}
-        >
-          <div className="flex justify-center mb-1">
-            <Users className={`w-6 h-6 transition-transform text-blue-400 ${hasVotedKnow ? 'scale-110 text-blue-400' : 'text-blue-400/80'}`} />
+            {/* Score badge abajo */}
+            <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-black/90 border border-amber-400/80 text-amber-400 flex items-center justify-center gap-1 z-20 shadow-lg text-[11px] font-black tracking-tight select-none whitespace-nowrap">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
+              <span>{studentScore.toFixed(1)}</span>
+            </div>
           </div>
-          <span className="block text-2xl font-black text-white tracking-tight">
-            {knowCount}
-          </span>
-          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedKnow ? 'text-blue-400' : 'text-zinc-400'}`}>
-            {isOwnProfile ? 'Seguidores (Tu perfil)' : hasVotedKnow ? 'Siguiendo' : 'Seguir'}
-          </span>
+
+          {/* Información del estudiante */}
+          <div className="space-y-2 flex-1 min-w-0">
+            <div className="flex items-center justify-center sm:justify-start gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight uppercase">
+                {studentFullName}
+              </h1>
+              <GenderBadge gender={student.gender} size="lg" />
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
+              <p className="px-3 py-0.5 rounded-full bg-zinc-800/80 border border-zinc-700 text-zinc-300 text-[10px] uppercase font-bold tracking-widest">
+                ESTUDIANTE
+              </p>
+
+              {student.is_claimed ? (
+                <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold shadow-xs">
+                  <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>{isOwnProfile ? 'Tu Perfil Oficial Verificado' : 'Perfil Oficial Verificado'}</span>
+                </div>
+              ) : !userHasClaimedAnyProfile ? (
+                <button
+                  type="button"
+                  onClick={() => setClaimModalOpen(true)}
+                  className="px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black font-extrabold text-[11px] uppercase tracking-wider shadow-[0_0_20px_rgba(234,179,8,0.3)] transition-all flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95"
+                  title="Reclamar este perfil con tu número de DNI"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Reclamar con DNI</span>
+                </button>
+              ) : null}
+            </div>
+          </div>
+
         </div>
 
-        {/* Fan */}
-        <div 
-          onClick={() => !isOwnProfile && handleInteractionToggle('fan')}
-          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all select-none duration-200 ${
-            isOwnProfile
-              ? 'border-zinc-800/80 opacity-90 cursor-default'
-              : hasVotedFan 
-              ? 'border-red-500 bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.2)] cursor-pointer active:scale-[0.98]' 
-              : 'border-zinc-800/80 hover:border-red-500/40 hover:bg-[#121212] cursor-pointer active:scale-[0.98]'
-          }`}
-          title={isOwnProfile ? 'Este es tu propio perfil' : undefined}
-        >
-          <div className="flex justify-center mb-1">
-            <Heart className={`w-6 h-6 transition-transform text-red-500 ${hasVotedFan ? 'fill-red-500 scale-110' : 'fill-red-500/20'}`} />
-          </div>
-          <span className="block text-2xl font-black text-white tracking-tight">
-            {fanCount}
-          </span>
-          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedFan ? 'text-red-500' : 'text-zinc-400'}`}>
-            {isOwnProfile ? 'Fans (Tu perfil)' : hasVotedFan ? '✓ Fan' : 'Fan'}
-          </span>
+        {/* Lado derecho: Tarjetas Grandes de SEGUIDORES y FANS */}
+        <div className="flex items-center justify-center gap-3 w-full sm:w-auto z-10 flex-shrink-0">
+          {/* Seguir / Siguiendo */}
+          <button
+            type="button"
+            disabled={isOwnProfile}
+            onClick={() => !isOwnProfile && handleInteractionToggle('knows')}
+            className={`bg-[#0f0f12] border rounded-2xl p-4 sm:px-6 sm:py-4 text-center min-w-[125px] sm:min-w-[140px] transition-all select-none shadow-lg ${
+              isOwnProfile 
+                ? 'border-zinc-800/80 opacity-90 cursor-default'
+                : hasVotedKnow 
+                ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_20px_rgba(59,130,246,0.3)] cursor-pointer active:scale-95' 
+                : 'border-zinc-800 hover:border-blue-500/40 hover:bg-[#141418] cursor-pointer active:scale-95'
+            }`}
+            title={isOwnProfile ? 'Tus seguidores en la comunidad' : hasVotedKnow ? 'Dejar de seguir' : 'Seguir a este estudiante'}
+          >
+            <span className="block text-[11px] font-black uppercase tracking-wider text-blue-400 mb-1">
+              {isOwnProfile ? 'SEGUIDORES' : hasVotedKnow ? 'SIGUIENDO' : 'SEGUIR'}
+            </span>
+            <span className="block text-2xl sm:text-3xl font-black text-white tracking-tight">
+              {knowCount.toLocaleString()}
+            </span>
+          </button>
+
+          {/* Fan */}
+          <button
+            type="button"
+            disabled={isOwnProfile}
+            onClick={() => !isOwnProfile && handleInteractionToggle('fan')}
+            className={`bg-[#0f0f12] border rounded-2xl p-4 sm:px-6 sm:py-4 text-center min-w-[125px] sm:min-w-[140px] transition-all select-none shadow-lg ${
+              isOwnProfile
+                ? 'border-zinc-800/80 opacity-90 cursor-default'
+                : hasVotedFan 
+                ? 'border-pink-500 bg-pink-500/15 shadow-[0_0_20px_rgba(236,72,153,0.3)] cursor-pointer active:scale-95' 
+                : 'border-zinc-800 hover:border-pink-500/40 hover:bg-[#141418] cursor-pointer active:scale-95'
+            }`}
+            title={isOwnProfile ? 'Este es tu propio perfil' : undefined}
+          >
+            <span className="flex items-center justify-center gap-1 text-[11px] font-black uppercase tracking-wider text-pink-400 mb-1">
+              <Heart className={`w-3.5 h-3.5 ${hasVotedFan ? 'fill-pink-500 text-pink-500' : 'fill-pink-500/40'}`} />
+              <span>FANS</span>
+            </span>
+            <span className="block text-2xl sm:text-3xl font-black text-white tracking-tight">
+              {fanCount.toLocaleString()}
+            </span>
+          </button>
         </div>
+
       </div>
 
       {/* PESTAÑAS (Wiki, Reseñas, Crushes, Estadística - idéntico a Profesores) */}

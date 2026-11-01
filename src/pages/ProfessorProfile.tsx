@@ -712,7 +712,7 @@ export default function ProfessorProfile({
     : 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&auto=format&fit=crop';
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6 animate-in fade-in duration-300">
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10 space-y-6 animate-in fade-in duration-300">
       
       {/* Volver y Compartir */}
       <div className="flex items-center justify-between">
@@ -795,79 +795,88 @@ export default function ProfessorProfile({
         </p>
       )}
 
-      {/* SECCIÓN DEL AVATAR CON EL RATING RING (Diseño idéntico a imagen 2) */}
-      <div className="flex flex-col items-center text-center space-y-4 py-4">
-        <div className="relative">
-          {/* Avatar circular */}
-          <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-zinc-800 bg-[#181818] shadow-2xl">
-            {professor.avatar_url || hasCustomAvatar ? (
-              <img
-                src={professor.avatar_url || avatarUrl}
-                alt={professor.nombre_completo}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-white font-black text-4xl uppercase">
-                {professor.nombre.charAt(0)}
+      {/* TARJETA BANNER SUPERIOR DEL PROFESOR (Diseño horizontal ancho) */}
+      <div className="bg-[#0b0b0e] border border-zinc-800/80 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-6">
+        <div className="absolute top-0 left-0 right-0 h-28 bg-gradient-to-b from-amber-500/10 via-transparent to-transparent pointer-events-none" />
+
+        {/* Lado izquierdo: Avatar + Información principal */}
+        <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-7 w-full lg:w-auto text-center sm:text-left z-10">
+          
+          {/* Avatar squircle con glow */}
+          <div className="relative group flex-shrink-0">
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl p-1 bg-gradient-to-b from-amber-400/90 via-yellow-500/70 to-amber-600/50 shadow-[0_0_25px_rgba(251,191,36,0.3)] flex items-center justify-center">
+              <div className="w-full h-full rounded-[14px] sm:rounded-[22px] overflow-hidden bg-[#121212] flex items-center justify-center">
+                {professor.avatar_url || hasCustomAvatar ? (
+                  <img
+                    src={professor.avatar_url || avatarUrl}
+                    alt={professor.nombre_completo}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-white font-black text-3xl sm:text-4xl uppercase">
+                    {professor.nombre.charAt(0)}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+
+            {/* Score badge abajo */}
+            <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-black/90 border border-amber-400/80 text-amber-400 flex items-center justify-center gap-1 z-20 shadow-lg text-[11px] font-black tracking-tight select-none whitespace-nowrap">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
+              <span>{professorScore.toFixed(1)}</span>
+            </div>
           </div>
-          {/* Rating badge en la parte inferior derecha del avatar */}
-          <div className="absolute -bottom-1 right-2 bg-[#eab308] text-black font-black text-xs px-2 py-1 rounded-full shadow-lg border border-black flex items-center gap-0.5">
-            <span>{professorScore.toFixed(1)}</span>
+
+          {/* Información del profesor */}
+          <div className="space-y-2 flex-1 min-w-0">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight uppercase">
+              {professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`}
+            </h1>
+            <p className="inline-block px-3 py-0.5 rounded-full bg-zinc-800/80 border border-zinc-700 text-zinc-300 text-[10px] uppercase font-bold tracking-widest">
+              {professor.role}
+            </p>
+          </div>
+
+        </div>
+
+        {/* Lado derecho: Tarjetas Grandes de SEGUIDORES y FANS */}
+        <div className="flex items-center justify-center gap-3 w-full sm:w-auto z-10 flex-shrink-0">
+          {/* Seguir / Siguiendo */}
+          <div 
+            onClick={() => handleInteractionToggle('knows')}
+            className={`bg-[#0f0f12] border rounded-2xl p-4 sm:px-6 sm:py-4 text-center min-w-[125px] sm:min-w-[140px] transition-all cursor-pointer select-none shadow-lg active:scale-95 ${
+              hasVotedKnow 
+                ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_20px_rgba(59,130,246,0.3)]' 
+                : 'border-zinc-800 hover:border-blue-500/40 hover:bg-[#141418]'
+            }`}
+          >
+            <span className="block text-[11px] font-black uppercase tracking-wider text-blue-400 mb-1">
+              {hasVotedKnow ? 'SIGUIENDO' : 'SEGUIR'}
+            </span>
+            <span className="block text-2xl sm:text-3xl font-black text-white tracking-tight">
+              {knowCount.toLocaleString()}
+            </span>
+          </div>
+
+          {/* Fan */}
+          <div 
+            onClick={() => handleInteractionToggle('fan')}
+            className={`bg-[#0f0f12] border rounded-2xl p-4 sm:px-6 sm:py-4 text-center min-w-[125px] sm:min-w-[140px] transition-all cursor-pointer select-none shadow-lg active:scale-95 ${
+              hasVotedFan 
+                ? 'border-pink-500 bg-pink-500/15 shadow-[0_0_20px_rgba(236,72,153,0.3)]' 
+                : 'border-zinc-800 hover:border-pink-500/40 hover:bg-[#141418]'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-1 text-[11px] font-black uppercase tracking-wider text-pink-400 mb-1">
+              <Heart className={`w-3.5 h-3.5 ${hasVotedFan ? 'fill-pink-500 text-pink-500' : 'fill-pink-500/40'}`} />
+              <span>FANS</span>
+            </span>
+            <span className="block text-2xl sm:text-3xl font-black text-white tracking-tight">
+              {fanCount.toLocaleString()}
+            </span>
           </div>
         </div>
 
-        {/* Nombre completo */}
-        <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight uppercase tracking-tight">
-          {professor.nombre_completo || `${professor.nombre} ${professor.apellidos}`}
-        </h1>
-        <p className="px-3 py-1 rounded-full bg-[#181818] border border-zinc-800 text-zinc-400 text-[10px] uppercase font-bold tracking-widest">
-          {professor.role}
-        </p>
-      </div>
-
-      {/* METRIC CARDS (Yo te conozco / Fan - Diseñados en grilla de 2 columnas) */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* Yo te conozco */}
-        <div 
-          onClick={() => handleInteractionToggle('knows')}
-          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all cursor-pointer select-none active:scale-[0.98] duration-200 ${
-            hasVotedKnow 
-              ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_15px_rgba(59,130,246,0.2)]' 
-              : 'border-zinc-800/80 hover:border-blue-500/40 hover:bg-[#121212]'
-          }`}
-        >
-          <div className="flex justify-center mb-1">
-            <Users className={`w-6 h-6 transition-transform text-blue-400 ${hasVotedKnow ? 'scale-110 text-blue-400' : 'text-blue-400/80'}`} />
-          </div>
-          <span className="block text-2xl font-black text-white tracking-tight">
-            {knowCount}
-          </span>
-          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedKnow ? 'text-blue-400' : 'text-zinc-400'}`}>
-            {hasVotedKnow ? 'Siguiendo' : 'Seguir'}
-          </span>
-        </div>
-
-        {/* Fan */}
-        <div 
-          onClick={() => handleInteractionToggle('fan')}
-          className={`bg-[#0d0d0d] border rounded-2xl p-6 text-center transition-all cursor-pointer select-none active:scale-[0.98] duration-200 ${
-            hasVotedFan 
-              ? 'border-red-500 bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.2)]' 
-              : 'border-zinc-800/80 hover:border-red-500/40 hover:bg-[#121212]'
-          }`}
-        >
-          <div className="flex justify-center mb-1">
-            <Heart className={`w-6 h-6 transition-transform text-red-500 ${hasVotedFan ? 'fill-red-500 scale-110' : 'fill-red-500/20'}`} />
-          </div>
-          <span className="block text-2xl font-black text-white tracking-tight">
-            {fanCount}
-          </span>
-          <span className={`block text-[10px] uppercase font-extrabold tracking-widest mt-1 transition-colors ${hasVotedFan ? 'text-red-500' : 'text-zinc-400'}`}>
-            {hasVotedFan ? '✓ Fan' : 'Fan'}
-          </span>
-        </div>
       </div>
 
       {/* PESTAÑAS (Wiki, Reseñas, Crushes, Ship, Estadística - idéntico a imagen 2) */}
