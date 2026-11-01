@@ -16,14 +16,19 @@ import {
   MessageCircle,
   Twitter,
   Facebook,
-  Loader2
+  Loader2,
+  Pencil,
+  AlertCircle
 } from 'lucide-react';
 import { 
   UserPublication, 
   PublicationReviewComment,
   getPublicationReviews,
-  getUserPublicationReview,
+  getUserPublicationRating,
+  submitPublicationPureRating,
   submitPublicationReview,
+  updatePublicationReviewComment,
+  deletePublicationReviewComment,
   isPublicationSavedByUser,
   toggleSavePublication,
   incrementPublicationView,
@@ -51,6 +56,8 @@ export default function PublicationCard({
 
   // Estados de interacción
   const [userVote, setUserVote] = useState<number | null>(null);
+  const [userRatingRecord, setUserRatingRecord] = useState<PublicationReviewComment | null>(null);
+  const [ratingErrorMsg, setRatingErrorMsg] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savingBookmark, setSavingBookmark] = useState(false);
@@ -70,8 +77,9 @@ export default function PublicationCard({
     (publication.star_5 || 0) || 0
   );
 
-  // Estados de comentarios y modal/sección de comentarios
+  // Estados de comentarios y filtros ("Todo" vs "Mi interacción")
   const [showComments, setShowComments] = useState(false);
+  const [commentsFilter, setCommentsFilter] = useState<'todo' | 'mi_interaccion'>('todo');
   const [commentsList, setCommentsList] = useState<PublicationReviewComment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -80,9 +88,23 @@ export default function PublicationCard({
   const [commentsCount, setCommentsCount] = useState<number>(publication.comments_count || 0);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
+  // Estados de edición de comentario/reseña
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [editingStars, setEditingStars] = useState<number | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
   // Estado del modal de compartir
   const [showShareModal, setShowShareModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // ¿El usuario tiene una calificación vinculada a una reseña con comentario escrito?
+  const hasReviewLocked = Boolean(
+    userRatingRecord &&
+    userRatingRecord.stars !== null &&
+    userRatingRecord.comment &&
+    userRatingRecord.comment.trim() !== ''
+  );
 
   // Reproducción de sonidos al calificar con estrellas (star1.mp3 a star5.mp3)
   const playStarAudio = (stars: number) => {
@@ -122,7 +144,7 @@ export default function PublicationCard({
     return count.toString();
   };
 
-  // 1. Cargar estado de guardado e interacción previa del usuario
+  // 1. Cargar estado de guardado y calificación previa del usuario
   useEffect(() => {
     if (!effectiveUserId || !publication.id) return;
 
@@ -130,15 +152,22 @@ export default function PublicationCard({
 
     async function loadUserState() {
       try {
-        const [isSaved, prevReview] = await Promise.all([
+        const [isSaved, ratingRecord] = await Promise.all([
           isPublicationSavedByUser(publication.id, effectiveUserId),
-          getUserPublicationReview(publication.id, effectiveUserId)
+          getUserPublicationRating(publication.id, effectiveUserId)
         ]);
 
         if (isMounted) {
           setSaved(isSaved);
-          if (prevReview && prevReview.stars) {
-            setUserVote(prevReview.stars);
+          if (ratingRecord && ratingRecord.stars) {
+            setUserRatingRecord(ratingRecord);
+            setUserVote(ratingRecord.stars);
+            // Refleja en las estrellas de comentario las que dejó previamente como calificación
+            setModalSelectedStars(ratingRecord.stars);
+          } else {
+            setUserRatingRecord(null);
+            setUserVote(null);
+            setModalSelectedStars(null);
           }
         }
       } catch (e) {}
@@ -169,7 +198,7 @@ export default function PublicationCard({
     const nextState = !showComments;
     setShowComments(nextState);
 
-    if (nextState && commentsList.length === 0) {
+    if (nextState) {
       try {
         setLoadingComments(true);
         const reviews = await getPublicationReviews(publication.id);
@@ -182,23 +211,30 @@ export default function PublicationCard({
     }
   };
 
-  // Votar directamente con puras estrellas en la barra de 5 estrellas
+  // Votar directamente con puras estrellas en la barra de 5 estrellas grandes
   const handleDirectStarVote = async (stars: number) => {
     if (!effectiveUserId) {
       alert('Debes iniciar sesión para calificar esta publicación.');
       return;
     }
 
+    // REGLA: Si está atada a una reseña con comentario, no puede cambiarla directamente con un clic
+    if (hasReviewLocked) {
+      setRatingErrorMsg('Tu calificación está vinculada a una reseña. Para modificar tus estrellas, edita o elimina tu reseña en los comentarios.');
+      setTimeout(() => setRatingErrorMsg(null), 5000);
+      return;
+    }
+
     playStarAudio(stars);
     setUserVote(stars);
     setModalSelectedStars(stars);
+    setRatingErrorMsg(null);
 
     try {
-      const res = await submitPublicationReview({
+      const res = await submitPublicationPureRating({
         publicationId: publication.id,
         userUid: effectiveUserId,
         stars: stars,
-        comment: null,
         authorInfo: {
           displayName: user?.displayName || 'Usuario Starryz',
           avatarUrl: user?.photoURL || null,
@@ -206,6 +242,9 @@ export default function PublicationCard({
       });
 
       if (res.success) {
+        if (res.updatedReview) {
+          setUserRatingRecord(res.updatedReview);
+        }
         if (typeof res.rating_avg === 'number') {
           setPublicationAvg(res.rating_avg.toFixed(2));
         }
@@ -214,13 +253,16 @@ export default function PublicationCard({
         }
         setFeedbackMsg(`¡Calificado con ${stars} ${stars === 1 ? 'estrella' : 'estrellas'}!`);
         setTimeout(() => setFeedbackMsg(null), 3000);
+      } else if (res.hasReviewLocked) {
+        setRatingErrorMsg(res.error || 'Tu calificación está vinculada a una reseña.');
+        setTimeout(() => setRatingErrorMsg(null), 5000);
       }
     } catch (e) {
       console.warn('Error al votar estrellas:', e);
     }
   };
 
-  // Enviar comentario (con o sin estrellas)
+  // Enviar comentario o reseña
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!effectiveUserId) {
@@ -252,7 +294,19 @@ export default function PublicationCard({
 
       if (res.success) {
         if (res.newReview) {
-          setCommentsList((prev) => [res.newReview!, ...prev]);
+          setCommentsList((prev) => {
+            const exists = prev.some((r) => r.id === res.newReview!.id);
+            if (exists) {
+              return prev.map((r) => r.id === res.newReview!.id ? res.newReview! : r);
+            }
+            return [res.newReview!, ...prev];
+          });
+
+          if (res.newReview.stars) {
+            setUserRatingRecord(res.newReview);
+            setUserVote(res.newReview.stars);
+            setModalSelectedStars(res.newReview.stars);
+          }
         }
         if (typeof res.rating_avg === 'number') {
           setPublicationAvg(res.rating_avg.toFixed(2));
@@ -263,12 +317,8 @@ export default function PublicationCard({
         if (typeof res.comments_count === 'number') {
           setCommentsCount(res.comments_count);
         }
-        if (modalSelectedStars) {
-          setUserVote(modalSelectedStars);
-        }
         setCommentText('');
-        setModalSelectedStars(null);
-        setFeedbackMsg('¡Comentario publicado con éxito!');
+        setFeedbackMsg(modalSelectedStars ? '¡Reseña publicada con éxito!' : '¡Comentario publicado con éxito!');
         setTimeout(() => setFeedbackMsg(null), 3000);
       } else if (res.error) {
         alert(res.error);
@@ -277,6 +327,99 @@ export default function PublicationCard({
       console.error('Error al enviar comentario:', err);
     } finally {
       setSubmittingReview(false);
+    }
+  };
+
+  // Iniciar edición de un comentario o reseña
+  const handleStartEdit = (rev: PublicationReviewComment) => {
+    setEditingReviewId(rev.id);
+    setEditingCommentText(rev.comment || '');
+    setEditingStars(rev.stars || null);
+  };
+
+  // Cancelar edición
+  const handleCancelEdit = () => {
+    setEditingReviewId(null);
+    setEditingCommentText('');
+    setEditingStars(null);
+  };
+
+  // Guardar edición
+  const handleSaveEdit = async (reviewId: string) => {
+    if (!effectiveUserId) return;
+    try {
+      setSavingEdit(true);
+      if (editingStars) {
+        playStarAudio(editingStars);
+      }
+
+      const res = await updatePublicationReviewComment({
+        reviewId,
+        publicationId: publication.id,
+        userUid: effectiveUserId,
+        comment: editingCommentText,
+        stars: editingStars,
+      });
+
+      if (res.success && res.updatedReview) {
+        setCommentsList((prev) => prev.map((r) => r.id === reviewId ? res.updatedReview! : r));
+        if (res.updatedReview.stars !== null) {
+          setUserRatingRecord(res.updatedReview);
+          setUserVote(res.updatedReview.stars);
+          setModalSelectedStars(res.updatedReview.stars);
+        }
+        if (typeof res.rating_avg === 'number') {
+          setPublicationAvg(res.rating_avg.toFixed(2));
+        }
+        if (typeof res.total_votes === 'number') {
+          setPublicationVotesCount(res.total_votes);
+        }
+        if (typeof res.comments_count === 'number') {
+          setCommentsCount(res.comments_count);
+        }
+        setEditingReviewId(null);
+        setFeedbackMsg('¡Comentario / reseña actualizado!');
+        setTimeout(() => setFeedbackMsg(null), 3000);
+      } else if (res.error) {
+        alert(res.error);
+      }
+    } catch (err: any) {
+      console.error('Error al editar:', err);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Eliminar comentario o reseña
+  const handleDeleteComment = async (reviewId: string, hadStars: boolean) => {
+    if (!effectiveUserId) return;
+    if (!window.confirm('¿Deseas eliminar este comentario / reseña?')) return;
+
+    try {
+      const res = await deletePublicationReviewComment(reviewId, publication.id, effectiveUserId);
+      if (res.success) {
+        setCommentsList((prev) => prev.filter((r) => r.id !== reviewId));
+        if (hadStars) {
+          setUserRatingRecord(null);
+          setUserVote(null);
+          setModalSelectedStars(null);
+        }
+        if (typeof res.rating_avg === 'number') {
+          setPublicationAvg(res.rating_avg.toFixed(2));
+        }
+        if (typeof res.total_votes === 'number') {
+          setPublicationVotesCount(res.total_votes);
+        }
+        if (typeof res.comments_count === 'number') {
+          setCommentsCount(res.comments_count);
+        }
+        setFeedbackMsg('Comentario / reseña eliminado.');
+        setTimeout(() => setFeedbackMsg(null), 3000);
+      } else if (res.error) {
+        alert(res.error);
+      }
+    } catch (err) {
+      console.error('Error al eliminar:', err);
     }
   };
 
@@ -505,6 +648,13 @@ export default function PublicationCard({
           })}
         </div>
 
+        {ratingErrorMsg && (
+          <div className="mt-1 px-3 py-1.5 rounded-xl bg-amber-950/50 border border-amber-500/40 text-amber-300 text-[11px] font-semibold flex items-center gap-1.5 animate-in fade-in duration-200">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-amber-400" />
+            <span>{ratingErrorMsg}</span>
+          </div>
+        )}
+
         {feedbackMsg && (
           <p className="text-[11px] font-bold text-amber-400 animate-in fade-in duration-200">
             {feedbackMsg}
@@ -580,7 +730,7 @@ export default function PublicationCard({
                 Deja tu comentario o reseña:
               </span>
 
-              {/* Selector de estrellas opcional para el comentario */}
+              {/* Selector de estrellas opcional para el comentario / reseña */}
               <div className="flex items-center gap-1">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button
@@ -642,62 +792,214 @@ export default function PublicationCard({
             </div>
           </form>
 
+          {/* DIVISIÓN DE PESTAÑAS: TODO Y MI INTERACCIÓN */}
+          <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-2">
+            <button
+              type="button"
+              onClick={() => setCommentsFilter('todo')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                commentsFilter === 'todo'
+                  ? 'bg-zinc-800 text-white shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60'
+              }`}
+            >
+              <span>Todo</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-900 border border-zinc-700/60 text-zinc-400">
+                {commentsList.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCommentsFilter('mi_interaccion')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                commentsFilter === 'mi_interaccion'
+                  ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400 shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60'
+              }`}
+            >
+              <span>Mi interacción</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-900 border border-zinc-700/60 text-amber-400">
+                {commentsList.filter((c) => effectiveUserId && c.user_uid === effectiveUserId).length}
+              </span>
+            </button>
+          </div>
+
           {/* Lista de comentarios */}
-          <div className="space-y-2.5 max-h-72 overflow-y-auto no-scrollbar pr-1">
+          <div className="space-y-2.5 max-h-80 overflow-y-auto no-scrollbar pr-1">
             {loadingComments ? (
               <div className="py-6 text-center text-xs text-zinc-500 flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
                 <span>Cargando comentarios...</span>
               </div>
-            ) : commentsList.length === 0 ? (
-              <p className="text-center py-4 text-xs text-zinc-500 font-medium">
-                No hay comentarios todavía. ¡Sé el primero en opinar!
-              </p>
-            ) : (
-              commentsList.map((rev) => (
-                <div
-                  key={rev.id}
-                  className="bg-[#14151b] border border-zinc-800/60 rounded-xl p-3 space-y-1.5 shadow-sm"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      {rev.user_avatar_url ? (
-                        <img
-                          src={rev.user_avatar_url}
-                          alt="Usuario"
-                          className="w-6 h-6 rounded-full object-cover border border-zinc-700"
+            ) : (() => {
+              const myComments = commentsList.filter((c) => effectiveUserId && c.user_uid === effectiveUserId);
+              const displayed = commentsFilter === 'todo' ? commentsList : myComments;
+
+              if (displayed.length === 0) {
+                return (
+                  <p className="text-center py-6 text-xs text-zinc-500 font-medium">
+                    {commentsFilter === 'mi_interaccion'
+                      ? 'Aún no has dejado ningún comentario o reseña en esta publicación.'
+                      : 'No hay comentarios todavía. ¡Sé el primero en opinar!'}
+                  </p>
+                );
+              }
+
+              return displayed.map((rev) => {
+                const isMyReview = Boolean(effectiveUserId && rev.user_uid === effectiveUserId);
+                const isEditingThis = editingReviewId === rev.id;
+
+                return (
+                  <div
+                    key={rev.id}
+                    className="bg-[#14151b] border border-zinc-800/60 rounded-xl p-3 space-y-2 shadow-sm transition-colors hover:border-zinc-700/60"
+                  >
+                    {/* Header del comentario: autor, estrellas, fecha, botones editar/borrar */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {rev.user_avatar_url ? (
+                          <img
+                            src={rev.user_avatar_url}
+                            alt="Usuario"
+                            className="w-6 h-6 rounded-full object-cover border border-zinc-700 flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-zinc-800 text-zinc-300 text-[10px] font-black flex items-center justify-center uppercase flex-shrink-0">
+                            {(rev.user_display_name || 'U').charAt(0)}
+                          </div>
+                        )}
+                        <span className="text-xs font-bold text-white truncate max-w-[140px] sm:max-w-[200px]">
+                          {rev.user_display_name || 'Compañero'}
+                        </span>
+                        {isMyReview && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono font-bold">
+                            Tú
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {rev.stars && !isEditingThis && (
+                          <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                            <span>{rev.stars}</span>
+                          </div>
+                        )}
+                        <span className="text-[10px] text-zinc-500">
+                          {formatTimeAgo(rev.created_at)}
+                        </span>
+
+                        {/* Botones de Editar y Borrar para el autor */}
+                        {isMyReview && !isEditingThis && (
+                          <div className="flex items-center gap-1 ml-1 border-l border-zinc-800 pl-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(rev)}
+                              className="p-1 text-zinc-400 hover:text-amber-400 transition-colors rounded-md hover:bg-zinc-800 cursor-pointer"
+                              title="Editar comentario o reseña"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteComment(rev.id, Boolean(rev.stars))}
+                              className="p-1 text-zinc-400 hover:text-red-400 transition-colors rounded-md hover:bg-zinc-800 cursor-pointer"
+                              title="Eliminar comentario o reseña"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* MODO EDICIÓN */}
+                    {isEditingThis ? (
+                      <div className="space-y-2 pt-1 border-t border-zinc-800/60 animate-in fade-in duration-150">
+                        {/* Selector de estrellas si era o quiere ser reseña */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                            Estrellas:
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => {
+                                  playStarAudio(star);
+                                  setEditingStars(editingStars === star ? null : star);
+                                }}
+                                className="p-0.5 hover:scale-110 transition-transform cursor-pointer"
+                              >
+                                <Star
+                                  className={`w-3.5 h-3.5 ${
+                                    editingStars !== null && star <= editingStars
+                                      ? 'fill-[#facc15] text-[#facc15]'
+                                      : 'text-zinc-600'
+                                  }`}
+                                />
+                              </button>
+                            ))}
+                            {editingStars && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingStars(null)}
+                                className="text-[9px] text-zinc-500 hover:text-zinc-300 ml-1 underline cursor-pointer"
+                              >
+                                Quitar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Texto de edición */}
+                        <textarea
+                          rows={2}
+                          value={editingCommentText}
+                          onChange={(e) => setEditingCommentText(e.target.value)}
+                          maxLength={400}
+                          className="w-full bg-[#0d0e12] border border-zinc-700/80 focus:border-amber-400 rounded-lg p-2 text-xs text-white placeholder-zinc-500 outline-none resize-none leading-relaxed"
                         />
-                      ) : (
-                        <div className="w-6 h-6 rounded-full bg-zinc-800 text-zinc-300 text-[10px] font-black flex items-center justify-center uppercase">
-                          {(rev.user_display_name || 'U').charAt(0)}
-                        </div>
-                      )}
-                      <span className="text-xs font-bold text-white">
-                        {rev.user_display_name || 'Compañero'}
-                      </span>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      {rev.stars && (
-                        <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">
-                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                          <span>{rev.stars}</span>
+                        {/* Botones Guardar / Cancelar */}
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={handleCancelEdit}
+                            disabled={savingEdit}
+                            className="px-2.5 py-1 rounded-lg text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEdit(rev.id)}
+                            disabled={savingEdit || (!editingCommentText.trim() && editingStars === null)}
+                            className="px-3 py-1 rounded-lg bg-[#eab308] hover:bg-yellow-400 text-black font-black text-[11px] flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-40"
+                          >
+                            {savingEdit ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                            <span>Guardar</span>
+                          </button>
                         </div>
-                      )}
-                      <span className="text-[10px] text-zinc-500">
-                        {formatTimeAgo(rev.created_at)}
-                      </span>
-                    </div>
+                      </div>
+                    ) : (
+                      /* TEXTO NORMAL DEL COMENTARIO */
+                      rev.comment && (
+                        <p className="text-xs text-zinc-300 leading-relaxed pl-8">
+                          {rev.comment}
+                        </p>
+                      )
+                    )}
                   </div>
-
-                  {rev.comment && (
-                    <p className="text-xs text-zinc-300 leading-relaxed pl-8">
-                      {rev.comment}
-                    </p>
-                  )}
-                </div>
-              ))
-            )}
+                );
+              });
+            })()}
           </div>
         </div>
       )}

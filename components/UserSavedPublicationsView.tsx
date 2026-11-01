@@ -51,7 +51,7 @@ export default function UserSavedPublicationsView({ userUid }: UserSavedPublicat
 
   if (savedPublications.length === 0) {
     return (
-      <div className="p-10 sm:p-14 rounded-3xl bg-[#0b0b0e] border border-zinc-800/80 text-center space-y-4 max-w-2xl mx-auto shadow-xl animate-in fade-in duration-300">
+      <div className="p-10 sm:p-14 rounded-3xl bg-[#0b0b0e] border border-zinc-800/80 text-center space-y-4 max-w-3xl mx-auto w-full shadow-xl animate-in fade-in duration-300">
         <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-md">
           <Bookmark className="w-8 h-8" />
         </div>

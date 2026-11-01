@@ -302,6 +302,33 @@ export async function getPublicationReviews(
 }
 
 /**
+ * Obtiene la calificación (estrellas) previa del usuario actual para una publicación específica
+ */
+export async function getUserPublicationRating(
+  publicationId: string,
+  userUid: string
+): Promise<PublicationReviewComment | null> {
+  if (!publicationId || !userUid) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from(REVIEWS_TABLE)
+      .select('*')
+      .eq('publication_id', publicationId)
+      .eq('user_uid', userUid)
+      .not('stars', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data as PublicationReviewComment;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Obtiene la reseña previa del usuario actual para una publicación específica (si ya votó o comentó)
  */
 export async function getUserPublicationReview(
@@ -328,11 +355,171 @@ export async function getUserPublicationReview(
 }
 
 /**
- * Registra una reseña / comentario:
- * - Puras estrellas (stars != null, comment == null)
- * - Estrellas + Comentario (stars != null, comment != null)
- * - Puro comentario (stars == null, comment != null)
- * Actualiza de inmediato las columnas rating_avg, star_1..star_5 y comments_count en 'user-publications'.
+ * Recalcula y actualiza en 'user-publications' el promedio, total de votos, desglose de estrellas y cantidad de comentarios
+ */
+export async function recalculatePublicationMetrics(publicationId: string): Promise<{
+  rating_avg: number;
+  total_votes: number;
+  comments_count: number;
+  star_1: number;
+  star_2: number;
+  star_3: number;
+  star_4: number;
+  star_5: number;
+}> {
+  try {
+    const { data: allReviews } = await supabase
+      .from(REVIEWS_TABLE)
+      .select('stars, comment')
+      .eq('publication_id', publicationId);
+
+    const reviewsList = allReviews || [];
+    const starVotes = reviewsList.filter((r: any) => typeof r.stars === 'number' && r.stars >= 1 && r.stars <= 5);
+    const totalVotes = starVotes.length;
+    const sumStars = starVotes.reduce((acc: number, r: any) => acc + Number(r.stars), 0);
+    const newRatingAvg = totalVotes > 0 ? parseFloat((sumStars / totalVotes).toFixed(2)) : 0;
+    const commentsCount = reviewsList.filter((r: any) => Boolean(r.comment && r.comment.trim())).length;
+
+    const star1 = starVotes.filter((r: any) => Number(r.stars) === 1).length;
+    const star2 = starVotes.filter((r: any) => Number(r.stars) === 2).length;
+    const star3 = starVotes.filter((r: any) => Number(r.stars) === 3).length;
+    const star4 = starVotes.filter((r: any) => Number(r.stars) === 4).length;
+    const star5 = starVotes.filter((r: any) => Number(r.stars) === 5).length;
+
+    await supabase
+      .from('user-publications')
+      .update({
+        rating_avg: newRatingAvg,
+        rating_percentage: totalVotes > 0 ? parseFloat(((newRatingAvg / 5) * 100).toFixed(2)) : 0,
+        star_1: star1,
+        star_2: star2,
+        star_3: star3,
+        star_4: star4,
+        star_5: star5,
+        comments_count: commentsCount,
+      })
+      .eq('id', publicationId);
+
+    return {
+      rating_avg: newRatingAvg,
+      total_votes: totalVotes,
+      comments_count: commentsCount,
+      star_1: star1,
+      star_2: star2,
+      star_3: star3,
+      star_4: star4,
+      star_5: star5,
+    };
+  } catch (err) {
+    console.warn('[Publications] Error al recalcular métricas:', err);
+    return {
+      rating_avg: 0,
+      total_votes: 0,
+      comments_count: 0,
+      star_1: 0,
+      star_2: 0,
+      star_3: 0,
+      star_4: 0,
+      star_5: 0,
+    };
+  }
+}
+
+/**
+ * Calificación directa con puras estrellas (barra grande):
+ * - Si el usuario ya dejó una reseña (calificación con comentario de texto), se bloquea y avisa que debe editar/borrar su reseña.
+ * - Si no tenía calificación o era pura calificación, actualiza o inserta la calificación y recalcula métricas.
+ */
+export async function submitPublicationPureRating(params: {
+  publicationId: string;
+  userUid: string;
+  stars: number;
+  authorInfo?: {
+    displayName?: string | null;
+    username?: string | null;
+    avatarUrl?: string | null;
+  };
+}): Promise<{
+  success: boolean;
+  hasReviewLocked?: boolean;
+  error?: string;
+  updatedReview?: PublicationReviewComment;
+  rating_avg?: number;
+  total_votes?: number;
+}> {
+  const { publicationId, userUid, stars, authorInfo } = params;
+  if (!publicationId || !userUid) {
+    return { success: false, error: 'Debes iniciar sesión para calificar.' };
+  }
+
+  const cleanStars = Math.min(5, Math.max(1, Math.round(stars)));
+
+  try {
+    const existing = await getUserPublicationRating(publicationId, userUid);
+
+    if (existing) {
+      // Si la calificación tiene texto escrito, ¡es una reseña vinculada!
+      if (existing.comment && existing.comment.trim() !== '') {
+        return {
+          success: false,
+          hasReviewLocked: true,
+          error: 'Tu calificación está vinculada a una reseña. Para cambiar tus estrellas, edita o elimina tu reseña en la sección de comentarios.',
+        };
+      }
+
+      // Si era pura calificación sin comentario, se puede cambiar libremente
+      const { data, error } = await supabase
+        .from(REVIEWS_TABLE)
+        .update({ stars: cleanStars })
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (error) return { success: false, error: error.message };
+
+      const metrics = await recalculatePublicationMetrics(publicationId);
+      return {
+        success: true,
+        updatedReview: data as PublicationReviewComment,
+        rating_avg: metrics.rating_avg,
+        total_votes: metrics.total_votes,
+      };
+    }
+
+    // Primera vez que califica: insertar como pura calificación
+    const { data, error } = await supabase
+      .from(REVIEWS_TABLE)
+      .insert([{
+        publication_id: publicationId,
+        user_uid: userUid,
+        stars: cleanStars,
+        comment: null,
+        user_display_name: authorInfo?.displayName || 'Usuario',
+        user_username: authorInfo?.username || null,
+        user_avatar_url: authorInfo?.avatarUrl || null,
+      }])
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+
+    const metrics = await recalculatePublicationMetrics(publicationId);
+    return {
+      success: true,
+      updatedReview: data as PublicationReviewComment,
+      rating_avg: metrics.rating_avg,
+      total_votes: metrics.total_votes,
+    };
+  } catch (err: any) {
+    console.error('[Publications] Error al calificar con estrellas:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Registra o actualiza comentario o reseña:
+ * - Si viene con estrellas: se vincula a la única calificación permitida por usuario (actualiza si ya existía una calificación previa).
+ * - Si es puro comentario (stars == null): se inserta un nuevo comentario independiente.
  */
 export async function submitPublicationReview(params: {
   publicationId: string;
@@ -362,78 +549,181 @@ export async function submitPublicationReview(params: {
   const cleanComment = (comment || '').trim() || null;
 
   if (cleanStars === null && !cleanComment) {
-    return { success: false, error: 'Debes ingresar al menos una calificación de estrellas o un comentario.' };
+    return { success: false, error: 'Debes ingresar una calificación de estrellas o un comentario.' };
   }
 
   try {
-    const insertPayload = {
-      publication_id: publicationId,
-      user_uid: userUid,
-      stars: cleanStars,
-      comment: cleanComment,
-      user_display_name: authorInfo?.displayName || 'Usuario',
-      user_username: authorInfo?.username || null,
-      user_avatar_url: authorInfo?.avatarUrl || null,
-    };
+    let insertedOrUpdated: any = null;
 
-    const { data: inserted, error: insertErr } = await supabase
-      .from(REVIEWS_TABLE)
-      .insert([insertPayload])
-      .select()
-      .single();
+    if (cleanStars !== null) {
+      // El usuario está enviando una reseña (o pura calificación). Buscar si ya tiene calificación previa:
+      const existingRating = await getUserPublicationRating(publicationId, userUid);
 
-    if (insertErr) {
-      console.error('[Publications] Error al guardar reseña/comentario:', insertErr);
-      return { success: false, error: insertErr.message };
+      if (existingRating) {
+        // Actualizar su registro de calificación existente con el nuevo comentario y/o estrellas
+        const { data: updated, error: updateErr } = await supabase
+          .from(REVIEWS_TABLE)
+          .update({
+            stars: cleanStars,
+            comment: cleanComment,
+            user_display_name: authorInfo?.displayName || existingRating.user_display_name,
+            user_username: authorInfo?.username || existingRating.user_username,
+            user_avatar_url: authorInfo?.avatarUrl || existingRating.user_avatar_url,
+          })
+          .eq('id', existingRating.id)
+          .select()
+          .single();
+
+        if (updateErr) return { success: false, error: updateErr.message };
+        insertedOrUpdated = updated;
+      } else {
+        // Crear nuevo registro con estrellas
+        const { data: inserted, error: insertErr } = await supabase
+          .from(REVIEWS_TABLE)
+          .insert([{
+            publication_id: publicationId,
+            user_uid: userUid,
+            stars: cleanStars,
+            comment: cleanComment,
+            user_display_name: authorInfo?.displayName || 'Usuario',
+            user_username: authorInfo?.username || null,
+            user_avatar_url: authorInfo?.avatarUrl || null,
+          }])
+          .select()
+          .single();
+
+        if (insertErr) return { success: false, error: insertErr.message };
+        insertedOrUpdated = inserted;
+      }
+    } else {
+      // Puro comentario sin estrellas: se crea un nuevo comentario independiente
+      const { data: inserted, error: insertErr } = await supabase
+        .from(REVIEWS_TABLE)
+        .insert([{
+          publication_id: publicationId,
+          user_uid: userUid,
+          stars: null,
+          comment: cleanComment,
+          user_display_name: authorInfo?.displayName || 'Usuario',
+          user_username: authorInfo?.username || null,
+          user_avatar_url: authorInfo?.avatarUrl || null,
+        }])
+        .select()
+        .single();
+
+      if (insertErr) return { success: false, error: insertErr.message };
+      insertedOrUpdated = inserted;
     }
 
-    // Recalcular métricas de la publicación
-    const { data: allReviews } = await supabase
-      .from(REVIEWS_TABLE)
-      .select('stars, comment')
-      .eq('publication_id', publicationId);
-
-    const reviewsList = allReviews || [];
-    const starVotes = reviewsList.filter((r: any) => typeof r.stars === 'number' && r.stars >= 1 && r.stars <= 5);
-    const totalVotes = starVotes.length;
-    const sumStars = starVotes.reduce((acc: number, r: any) => acc + Number(r.stars), 0);
-    const newRatingAvg = totalVotes > 0 ? parseFloat((sumStars / totalVotes).toFixed(2)) : 0;
-    const commentsCount = reviewsList.filter((r: any) => Boolean(r.comment && r.comment.trim())).length;
-
-    const star1 = starVotes.filter((r: any) => Number(r.stars) === 1).length;
-    const star2 = starVotes.filter((r: any) => Number(r.stars) === 2).length;
-    const star3 = starVotes.filter((r: any) => Number(r.stars) === 3).length;
-    const star4 = starVotes.filter((r: any) => Number(r.stars) === 4).length;
-    const star5 = starVotes.filter((r: any) => Number(r.stars) === 5).length;
-
-    // Actualizar tabla 'user-publications'
-    try {
-      await supabase
-        .from('user-publications')
-        .update({
-          rating_avg: newRatingAvg,
-          rating_percentage: totalVotes > 0 ? parseFloat(((newRatingAvg / 5) * 100).toFixed(2)) : 0,
-          star_1: star1,
-          star_2: star2,
-          star_3: star3,
-          star_4: star4,
-          star_5: star5,
-          comments_count: commentsCount,
-        })
-        .eq('id', publicationId);
-    } catch (updateErr) {
-      console.warn('[Publications] Aviso al actualizar contadores en user-publications:', updateErr);
-    }
+    const metrics = await recalculatePublicationMetrics(publicationId);
 
     return {
       success: true,
-      newReview: inserted as PublicationReviewComment,
-      rating_avg: newRatingAvg,
-      total_votes: totalVotes,
-      comments_count: commentsCount,
+      newReview: insertedOrUpdated as PublicationReviewComment,
+      rating_avg: metrics.rating_avg,
+      total_votes: metrics.total_votes,
+      comments_count: metrics.comments_count,
     };
   } catch (err: any) {
     console.error('[Publications] Excepción al procesar reseña:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Edita un comentario o reseña existente del usuario
+ */
+export async function updatePublicationReviewComment(params: {
+  reviewId: string;
+  publicationId: string;
+  userUid: string;
+  comment?: string | null;
+  stars?: number | null;
+}): Promise<{
+  success: boolean;
+  updatedReview?: PublicationReviewComment;
+  rating_avg?: number;
+  total_votes?: number;
+  comments_count?: number;
+  error?: string;
+}> {
+  const { reviewId, publicationId, userUid, comment, stars } = params;
+
+  if (!reviewId || !publicationId || !userUid) {
+    return { success: false, error: 'Parámetros inválidos para editar.' };
+  }
+
+  const cleanComment = (comment || '').trim() || null;
+  const cleanStars = typeof stars === 'number' && stars >= 1 && stars <= 5 ? Math.round(stars) : (stars === null ? null : undefined);
+
+  try {
+    const updatePayload: any = {
+      comment: cleanComment,
+    };
+    if (cleanStars !== undefined) {
+      updatePayload.stars = cleanStars;
+    }
+
+    const { data: updated, error } = await supabase
+      .from(REVIEWS_TABLE)
+      .update(updatePayload)
+      .eq('id', reviewId)
+      .eq('user_uid', userUid)
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+
+    const metrics = await recalculatePublicationMetrics(publicationId);
+
+    return {
+      success: true,
+      updatedReview: updated as PublicationReviewComment,
+      rating_avg: metrics.rating_avg,
+      total_votes: metrics.total_votes,
+      comments_count: metrics.comments_count,
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Elimina un comentario o reseña existente del usuario y recalcula métricas
+ */
+export async function deletePublicationReviewComment(
+  reviewId: string,
+  publicationId: string,
+  userUid: string
+): Promise<{
+  success: boolean;
+  rating_avg?: number;
+  total_votes?: number;
+  comments_count?: number;
+  error?: string;
+}> {
+  if (!reviewId || !publicationId || !userUid) {
+    return { success: false, error: 'Parámetros inválidos para eliminar.' };
+  }
+
+  try {
+    const { error } = await supabase
+      .from(REVIEWS_TABLE)
+      .delete()
+      .eq('id', reviewId)
+      .eq('user_uid', userUid);
+
+    if (error) return { success: false, error: error.message };
+
+    const metrics = await recalculatePublicationMetrics(publicationId);
+
+    return {
+      success: true,
+      rating_avg: metrics.rating_avg,
+      total_votes: metrics.total_votes,
+      comments_count: metrics.comments_count,
+    };
+  } catch (err: any) {
     return { success: false, error: err.message };
   }
 }

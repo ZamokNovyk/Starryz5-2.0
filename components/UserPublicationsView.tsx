@@ -189,9 +189,9 @@ export default function UserPublicationsView({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* CAJA DE CREACIÓN DE PUBLICACIÓN (IDÉNTICA A LA IMAGEN) */}
+      {/* CAJA DE CREACIÓN DE PUBLICACIÓN (ALINEADA EXACTAMENTE CON LAS PUBLICACIONES) */}
       {isOwnProfile && (
-        <section className="bg-[#121318] border border-[#23242d] rounded-2xl p-4 sm:p-5 shadow-xl space-y-4 max-w-2xl mx-auto w-full">
+        <section className="bg-[#121318] border border-[#23242d] rounded-2xl p-4 sm:p-6 shadow-xl space-y-4 max-w-3xl mx-auto w-full">
           {/* Mensajes de feedback */}
           {submitError && (
             <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
@@ -342,7 +342,7 @@ export default function UserPublicationsView({
           <p className="text-xs text-zinc-400 font-mono">Cargando publicaciones...</p>
         </div>
       ) : publications.length === 0 ? (
-        <div className="p-10 rounded-2xl bg-[#121318] border border-[#23242d] text-center space-y-4 max-w-2xl mx-auto">
+        <div className="p-10 rounded-2xl bg-[#121318] border border-[#23242d] text-center space-y-4 max-w-3xl mx-auto w-full">
           <div className="w-14 h-14 mx-auto rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
             <ImageIcon className="w-7 h-7" />
           </div>
