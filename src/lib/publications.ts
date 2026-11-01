@@ -254,3 +254,412 @@ export async function deletePublication(
     return false;
   }
 }
+
+/**
+ * Reseñas y Comentarios de Publicaciones
+ * Tabla: 'user_publicaciones_reseñas+comentarios'
+ */
+export interface PublicationReviewComment {
+  id: string;
+  publication_id: string;
+  user_uid: string;
+  stars: number | null;
+  comment: string | null;
+  user_display_name?: string | null;
+  user_username?: string | null;
+  user_avatar_url?: string | null;
+  created_at: string;
+}
+
+const REVIEWS_TABLE = 'user_publicaciones_reseñas+comentarios';
+const SAVED_TABLE = 'user_guardados';
+
+/**
+ * Obtiene los comentarios y reseñas de una publicación ordenados del más reciente al más antiguo
+ */
+export async function getPublicationReviews(
+  publicationId: string
+): Promise<PublicationReviewComment[]> {
+  if (!publicationId) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from(REVIEWS_TABLE)
+      .select('*')
+      .eq('publication_id', publicationId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('[Publications] Aviso al consultar reseñas/comentarios:', error.message);
+      return [];
+    }
+
+    return (data || []) as PublicationReviewComment[];
+  } catch (err) {
+    console.warn('[Publications] Excepción al obtener reseñas/comentarios:', err);
+    return [];
+  }
+}
+
+/**
+ * Obtiene la reseña previa del usuario actual para una publicación específica (si ya votó o comentó)
+ */
+export async function getUserPublicationReview(
+  publicationId: string,
+  userUid: string
+): Promise<PublicationReviewComment | null> {
+  if (!publicationId || !userUid) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from(REVIEWS_TABLE)
+      .select('*')
+      .eq('publication_id', publicationId)
+      .eq('user_uid', userUid)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data as PublicationReviewComment;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Registra una reseña / comentario:
+ * - Puras estrellas (stars != null, comment == null)
+ * - Estrellas + Comentario (stars != null, comment != null)
+ * - Puro comentario (stars == null, comment != null)
+ * Actualiza de inmediato las columnas rating_avg, star_1..star_5 y comments_count en 'user-publications'.
+ */
+export async function submitPublicationReview(params: {
+  publicationId: string;
+  userUid: string;
+  stars?: number | null;
+  comment?: string | null;
+  authorInfo?: {
+    displayName?: string | null;
+    username?: string | null;
+    avatarUrl?: string | null;
+  };
+}): Promise<{
+  success: boolean;
+  newReview?: PublicationReviewComment;
+  rating_avg?: number;
+  total_votes?: number;
+  comments_count?: number;
+  error?: string;
+}> {
+  const { publicationId, userUid, stars, comment, authorInfo } = params;
+
+  if (!publicationId || !userUid) {
+    return { success: false, error: 'Debes iniciar sesión para calificar o comentar.' };
+  }
+
+  const cleanStars = typeof stars === 'number' && stars >= 1 && stars <= 5 ? Math.round(stars) : null;
+  const cleanComment = (comment || '').trim() || null;
+
+  if (cleanStars === null && !cleanComment) {
+    return { success: false, error: 'Debes ingresar al menos una calificación de estrellas o un comentario.' };
+  }
+
+  try {
+    const insertPayload = {
+      publication_id: publicationId,
+      user_uid: userUid,
+      stars: cleanStars,
+      comment: cleanComment,
+      user_display_name: authorInfo?.displayName || 'Usuario',
+      user_username: authorInfo?.username || null,
+      user_avatar_url: authorInfo?.avatarUrl || null,
+    };
+
+    const { data: inserted, error: insertErr } = await supabase
+      .from(REVIEWS_TABLE)
+      .insert([insertPayload])
+      .select()
+      .single();
+
+    if (insertErr) {
+      console.error('[Publications] Error al guardar reseña/comentario:', insertErr);
+      return { success: false, error: insertErr.message };
+    }
+
+    // Recalcular métricas de la publicación
+    const { data: allReviews } = await supabase
+      .from(REVIEWS_TABLE)
+      .select('stars, comment')
+      .eq('publication_id', publicationId);
+
+    const reviewsList = allReviews || [];
+    const starVotes = reviewsList.filter((r: any) => typeof r.stars === 'number' && r.stars >= 1 && r.stars <= 5);
+    const totalVotes = starVotes.length;
+    const sumStars = starVotes.reduce((acc: number, r: any) => acc + Number(r.stars), 0);
+    const newRatingAvg = totalVotes > 0 ? parseFloat((sumStars / totalVotes).toFixed(2)) : 0;
+    const commentsCount = reviewsList.filter((r: any) => Boolean(r.comment && r.comment.trim())).length;
+
+    const star1 = starVotes.filter((r: any) => Number(r.stars) === 1).length;
+    const star2 = starVotes.filter((r: any) => Number(r.stars) === 2).length;
+    const star3 = starVotes.filter((r: any) => Number(r.stars) === 3).length;
+    const star4 = starVotes.filter((r: any) => Number(r.stars) === 4).length;
+    const star5 = starVotes.filter((r: any) => Number(r.stars) === 5).length;
+
+    // Actualizar tabla 'user-publications'
+    try {
+      await supabase
+        .from('user-publications')
+        .update({
+          rating_avg: newRatingAvg,
+          rating_percentage: totalVotes > 0 ? parseFloat(((newRatingAvg / 5) * 100).toFixed(2)) : 0,
+          star_1: star1,
+          star_2: star2,
+          star_3: star3,
+          star_4: star4,
+          star_5: star5,
+          comments_count: commentsCount,
+        })
+        .eq('id', publicationId);
+    } catch (updateErr) {
+      console.warn('[Publications] Aviso al actualizar contadores en user-publications:', updateErr);
+    }
+
+    return {
+      success: true,
+      newReview: inserted as PublicationReviewComment,
+      rating_avg: newRatingAvg,
+      total_votes: totalVotes,
+      comments_count: commentsCount,
+    };
+  } catch (err: any) {
+    console.error('[Publications] Excepción al procesar reseña:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Comprueba si el usuario tiene guardada cierta publicación en 'user_guardados'
+ */
+export async function isPublicationSavedByUser(
+  publicationId: string,
+  userUid: string
+): Promise<boolean> {
+  if (!publicationId || !userUid) return false;
+
+  try {
+    const { data, error } = await supabase
+      .from(SAVED_TABLE)
+      .select('id')
+      .eq('publication_id', publicationId)
+      .eq('user_uid', userUid)
+      .limit(1)
+      .maybeSingle();
+
+    return Boolean(!error && data?.id);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Guarda o quita de guardados una publicación (Toggle Guardado)
+ */
+export async function toggleSavePublication(
+  publicationId: string,
+  userUid: string,
+  currentSavesCount: number = 0
+): Promise<{ isSaved: boolean; saves_count: number }> {
+  if (!publicationId || !userUid) {
+    return { isSaved: false, saves_count: currentSavesCount };
+  }
+
+  try {
+    const alreadySaved = await isPublicationSavedByUser(publicationId, userUid);
+    let nextState = !alreadySaved;
+    let nextCount = nextState ? currentSavesCount + 1 : Math.max(0, currentSavesCount - 1);
+
+    if (alreadySaved) {
+      await supabase
+        .from(SAVED_TABLE)
+        .delete()
+        .eq('publication_id', publicationId)
+        .eq('user_uid', userUid);
+    } else {
+      await supabase
+        .from(SAVED_TABLE)
+        .insert([{ publication_id: publicationId, user_uid: userUid }]);
+    }
+
+    // Actualizar saves_count en 'user-publications'
+    try {
+      await supabase
+        .from('user-publications')
+        .update({ saves_count: nextCount })
+        .eq('id', publicationId);
+    } catch {}
+
+    return { isSaved: nextState, saves_count: nextCount };
+  } catch (err) {
+    console.error('[Publications] Error al alternar guardado:', err);
+    return { isSaved: false, saves_count: currentSavesCount };
+  }
+}
+
+/**
+ * Obtiene todas las publicaciones guardadas por un usuario específico (para el tag Guardados)
+ */
+export async function getUserSavedPublications(userUid: string): Promise<UserPublication[]> {
+  if (!userUid) return [];
+
+  try {
+    const { data: savedRows, error: savedErr } = await supabase
+      .from(SAVED_TABLE)
+      .select('publication_id, created_at')
+      .eq('user_uid', userUid)
+      .order('created_at', { ascending: false });
+
+    if (savedErr || !savedRows || savedRows.length === 0) {
+      return [];
+    }
+
+    const pubIds = savedRows.map((r: any) => r.publication_id).filter(Boolean);
+    if (pubIds.length === 0) return [];
+
+    const { data: pubsData, error: pubsErr } = await supabase
+      .from('user-publications')
+      .select('*')
+      .in('id', pubIds);
+
+    if (pubsErr || !pubsData) return [];
+
+    const pubsList = pubsData as UserPublication[];
+
+    // Enriquecer datos de autor de users
+    const uniqueUserIds = Array.from(new Set(pubsList.map((p) => p.user_id).filter(Boolean)));
+    if (uniqueUserIds.length > 0) {
+      try {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, display_name, gender, country_code, score, photo_url')
+          .in('id', uniqueUserIds);
+
+        if (usersData) {
+          const userMap = new Map<string, UserAuthorData>();
+          usersData.forEach((u: any) => {
+            userMap.set(u.id, {
+              display_name: u.display_name,
+              gender: u.gender,
+              country_code: u.country_code,
+              score: u.score !== undefined && u.score !== null ? Number(u.score) : 5.0,
+              photo_url: u.photo_url,
+            });
+          });
+
+          return pubsList.map((pub) => ({
+            ...pub,
+            author_data: userMap.get(pub.user_id) || null,
+          }));
+        }
+      } catch {}
+    }
+
+    return pubsList;
+  } catch (err) {
+    console.warn('[Publications] Excepción al obtener publicaciones guardadas:', err);
+    return [];
+  }
+}
+
+/**
+ * Incrementa el contador de vistas de una publicación
+ */
+export async function incrementPublicationView(publicationId: string): Promise<number> {
+  if (!publicationId) return 0;
+
+  try {
+    const { data } = await supabase
+      .from('user-publications')
+      .select('views_count')
+      .eq('id', publicationId)
+      .maybeSingle();
+
+    const currentViews = Number(data?.views_count || 0);
+    const newViews = currentViews + 1;
+
+    await supabase
+      .from('user-publications')
+      .update({ views_count: newViews })
+      .eq('id', publicationId);
+
+    return newViews;
+  } catch (err) {
+    return 0;
+  }
+}
+
+/**
+ * Incrementa el contador de compartidos de una publicación
+ */
+export async function incrementPublicationShare(publicationId: string): Promise<number> {
+  if (!publicationId) return 0;
+
+  try {
+    const { data } = await supabase
+      .from('user-publications')
+      .select('shares_count')
+      .eq('id', publicationId)
+      .maybeSingle();
+
+    const currentShares = Number(data?.shares_count || 0);
+    const newShares = currentShares + 1;
+
+    await supabase
+      .from('user-publications')
+      .update({ shares_count: newShares })
+      .eq('id', publicationId);
+
+    return newShares;
+  } catch (err) {
+    return 0;
+  }
+}
+
+/**
+ * Actualiza dinámicamente las etiquetas Open Graph y Twitter en el cliente
+ * para que al compartir en redes sociales se genere la imagen y título llamativo
+ */
+export function updateOpenGraphMeta(params: {
+  title: string;
+  description: string;
+  imageUrl: string;
+  url?: string;
+}): void {
+  if (typeof document === 'undefined') return;
+
+  const { title, description, imageUrl, url = window.location.href } = params;
+
+  const setMeta = (attr: 'property' | 'name', key: string, content: string) => {
+    let el = document.querySelector(`meta[${attr}="${key}"]`);
+    if (!el) {
+      el = document.createElement('meta');
+      el.setAttribute(attr, key);
+      document.head.appendChild(el);
+    }
+    el.setAttribute('content', content);
+  };
+
+  // Open Graph
+  setMeta('property', 'og:title', title);
+  setMeta('property', 'og:description', description);
+  setMeta('property', 'og:image', imageUrl);
+  setMeta('property', 'og:image:secure_url', imageUrl);
+  setMeta('property', 'og:url', url);
+  setMeta('property', 'og:type', 'article');
+
+  // Twitter
+  setMeta('name', 'twitter:card', 'summary_large_image');
+  setMeta('name', 'twitter:title', title);
+  setMeta('name', 'twitter:description', description);
+  setMeta('name', 'twitter:image', imageUrl);
+}

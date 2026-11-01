@@ -40,7 +40,8 @@ import {
   Lock,
   MessageSquare,
   Layers,
-  Send
+  Send,
+  Bookmark
 } from 'lucide-react';
 import { 
   getUserProfessorSubscriptions, 
@@ -82,6 +83,7 @@ import GenderBadge from '@/components/GenderBadge';
 import CountrySelector from '@/components/CountrySelector';
 import { findCountry, getFlagUrl } from '@/src/data/countries';
 import UserPublicationsView from '@/components/UserPublicationsView';
+import UserSavedPublicationsView from '@/components/UserSavedPublicationsView';
 
 interface SupabaseUser {
   id: string;
@@ -160,7 +162,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
   // Estados para el perfil transformado tras reclamar perfil con DNI
   const [claimedStudent, setClaimedStudent] = useState<Student | null>(null);
-  const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'publicaciones' | 'reseñas' | 'crushes'>('mis_datos');
+  const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'publicaciones' | 'reseñas' | 'crushes' | 'guardados'>('mis_datos');
   const [claimedRatingBreakdown, setClaimedRatingBreakdown] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [claimedReviews, setClaimedReviews] = useState<StudentReviewItem[]>([]);
   const [claimedLoveMessages, setClaimedLoveMessages] = useState<StudentLoveMessage[]>([]);
@@ -1648,6 +1650,22 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             <Heart className="w-4 h-4 flex-shrink-0 text-current" />
             <span>Crushes {crushesCount > 0 ? `(${crushesCount})` : ''}</span>
           </button>
+
+          {isOwnProfile && (
+            <button
+              type="button"
+              onClick={() => setClaimedMainTab('guardados')}
+              title="Guardados"
+              className={`py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                claimedMainTab === 'guardados'
+                  ? 'bg-[#eab308] text-black shadow-md'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
+              }`}
+            >
+              <Bookmark className="w-4 h-4 flex-shrink-0 text-current" />
+              <span>Guardados</span>
+            </button>
+          )}
         </div>
 
         {/* Sub-pestañas dentro de "Mis Datos" */}
@@ -2077,6 +2095,10 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </div>
               </div>
             </div>
+
+          ) : claimedMainTab === 'guardados' ? (
+            /* TAB: PUBLICACIONES GUARDADAS */
+            <UserSavedPublicationsView userUid={uid || user?.uid || ''} />
 
           ) : (
             /* TAB: MIS DATOS / PERFIL ESTÁNDAR */
