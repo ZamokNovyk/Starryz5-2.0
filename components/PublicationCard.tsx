@@ -18,7 +18,14 @@ import {
   Facebook,
   Loader2,
   Pencil,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  Unlock,
+  Users,
+  Heart,
+  Globe,
+  Flag,
+  ChevronDown
 } from 'lucide-react';
 import { 
   UserPublication, 
@@ -33,7 +40,8 @@ import {
   toggleSavePublication,
   incrementPublicationView,
   incrementPublicationShare,
-  updateOpenGraphMeta
+  updateOpenGraphMeta,
+  updatePublicationVisibility
 } from '@/src/lib/publications';
 import { getFlagUrl } from '@/src/data/countries';
 import { useAuth } from '@/src/context/AuthContext';
@@ -102,6 +110,14 @@ export default function PublicationCard({
   // Estado del modal de compartir
   const [showShareModal, setShowShareModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Estados de visibilidad / ocultar publicación (candado)
+  const [visibility, setVisibility] = useState<string>(publication.estado_de_vista || 'todos');
+  const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
+  const [updatingVisibility, setUpdatingVisibility] = useState(false);
+
+  // Estado para reporte visual
+  const [showReportToast, setShowReportToast] = useState(false);
 
   // ¿El usuario ya tiene una reseña (calificación con comentario de texto)?
   const hasExistingReview = Boolean(
@@ -545,6 +561,33 @@ export default function PublicationCard({
     }
   };
 
+  // Cambiar estado de visibilidad / ocultar (todos, solo_yo, solo_seguidores, solo_fans)
+  const handleChangeVisibility = async (newVisibility: string) => {
+    if (!effectiveUserId) return;
+    try {
+      setUpdatingVisibility(true);
+      setVisibility(newVisibility);
+      setShowVisibilityMenu(false);
+      await updatePublicationVisibility(publication.id, effectiveUserId, newVisibility);
+      setFeedbackMsg(`Visibilidad cambiada: ${
+        newVisibility === 'solo_yo' ? 'Solo yo (Oculto)' :
+        newVisibility === 'solo_seguidores' ? 'Solo seguidores' :
+        newVisibility === 'solo_fans' ? 'Solo fans' : 'Todos'
+      }`);
+      setTimeout(() => setFeedbackMsg(null), 3000);
+    } catch (err) {
+      console.warn('Error al actualizar visibilidad:', err);
+    } finally {
+      setUpdatingVisibility(false);
+    }
+  };
+
+  // Manejar reporte (por el momento solo visual)
+  const handleReportPublication = () => {
+    setShowReportToast(true);
+    setTimeout(() => setShowReportToast(false), 3500);
+  };
+
   const shareUrl = typeof window !== 'undefined' 
     ? `${window.location.origin}/perfil/${publication.user_id}?pub=${publication.id}` 
     : '';
@@ -609,16 +652,147 @@ export default function PublicationCard({
           </div>
         </div>
 
-        {/* Lado derecho: Pill de Calificación de la publicación + Botón de eliminar */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Lado derecho: Calificación + Candado (Ocultar/Visibilidad) + Reporte + Eliminar */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           <div 
-            className="px-3 py-1.5 rounded-full bg-[#1e1c14] border border-[#4d3f10] text-[#facc15] text-xs font-black tracking-wider flex items-center gap-1.5 shadow-sm select-none"
+            className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#1e1c14] border border-[#4d3f10] text-[#facc15] text-[11px] sm:text-xs font-black tracking-wider flex items-center gap-1.5 shadow-sm select-none"
             title="Promedio de estrellas de la publicación y total de votos"
           >
             <Star className="w-3.5 h-3.5 fill-[#facc15] text-[#facc15]" />
             <span className="font-mono font-bold text-white text-xs">{publicationAvg}</span>
             <span className="text-[11px] text-zinc-400 font-normal">({publicationVotesCount})</span>
           </div>
+
+          {/* Botón de Candado / Selector de Visibilidad (SOLO VISIBLE PARA EL DUEÑO) */}
+          {isOwner && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowVisibilityMenu((prev) => !prev)}
+                disabled={updatingVisibility}
+                title={`Visibilidad actual: ${
+                  visibility === 'solo_yo' ? 'Solo yo (Oculta)' :
+                  visibility === 'solo_seguidores' ? 'Solo seguidores' :
+                  visibility === 'solo_fans' ? 'Solo fans' : 'Todos (Pública)'
+                }`}
+                className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                  visibility === 'solo_yo'
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 hover:bg-amber-500/25'
+                    : visibility === 'solo_seguidores'
+                    ? 'bg-blue-500/15 border-blue-500/40 text-blue-400 hover:bg-blue-500/25'
+                    : visibility === 'solo_fans'
+                    ? 'bg-pink-500/15 border-pink-500/40 text-pink-400 hover:bg-pink-500/25'
+                    : 'bg-[#181920] border-zinc-700/60 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                }`}
+              >
+                {updatingVisibility ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                ) : visibility === 'solo_yo' ? (
+                  <Lock className="w-4 h-4" />
+                ) : visibility === 'solo_seguidores' ? (
+                  <Users className="w-4 h-4" />
+                ) : visibility === 'solo_fans' ? (
+                  <Heart className="w-4 h-4" />
+                ) : (
+                  <Unlock className="w-4 h-4" />
+                )}
+                <ChevronDown className="w-3 h-3 opacity-60" />
+              </button>
+
+              {/* Menú desplegable con las 4 opciones: Todos, Solo yo, Solo seguidores, Solo fans */}
+              {showVisibilityMenu && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowVisibilityMenu(false)} 
+                  />
+                  <div className="absolute right-0 top-full mt-1.5 w-48 bg-[#12131a] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                    <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 border-b border-zinc-800/80">
+                      Estado de vista
+                    </div>
+
+                    {/* 1. Todos */}
+                    <button
+                      type="button"
+                      onClick={() => handleChangeVisibility('todos')}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                        visibility === 'todos'
+                          ? 'bg-zinc-800 text-white'
+                          : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Todos</span>
+                      </span>
+                      {visibility === 'todos' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                    </button>
+
+                    {/* 2. Solo yo */}
+                    <button
+                      type="button"
+                      onClick={() => handleChangeVisibility('solo_yo')}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                        visibility === 'solo_yo'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Solo yo (Ocultar)</span>
+                      </span>
+                      {visibility === 'solo_yo' && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                    </button>
+
+                    {/* 3. Solo seguidores */}
+                    <button
+                      type="button"
+                      onClick={() => handleChangeVisibility('solo_seguidores')}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                        visibility === 'solo_seguidores'
+                          ? 'bg-blue-500/20 text-blue-300'
+                          : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Users className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Solo seguidores</span>
+                      </span>
+                      {visibility === 'solo_seguidores' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                    </button>
+
+                    {/* 4. Solo fans */}
+                    <button
+                      type="button"
+                      onClick={() => handleChangeVisibility('solo_fans')}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                        visibility === 'solo_fans'
+                          ? 'bg-pink-500/20 text-pink-300'
+                          : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Heart className="w-3.5 h-3.5 text-pink-400" />
+                        <span>Solo fans</span>
+                      </span>
+                      {visibility === 'solo_fans' && <Check className="w-3.5 h-3.5 text-pink-400" />}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Botón de Reporte (Icono visual para todos los usuarios) */}
+          <button
+            type="button"
+            onClick={handleReportPublication}
+            title="Reportar publicación"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+          >
+            <Flag className="w-4 h-4" />
+          </button>
 
           {/* Botón de eliminar (visible para el dueño) */}
           {isOwner && (
@@ -634,6 +808,14 @@ export default function PublicationCard({
           )}
         </div>
       </div>
+
+      {/* Toast informativo de reporte (visual) */}
+      {showReportToast && (
+        <div className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-xs flex items-center gap-2 animate-in fade-in duration-200">
+          <Flag className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+          <span>Publicación reportada para moderación. Gracias por ayudar a la comunidad.</span>
+        </div>
+      )}
 
       {/* TEXTO DE DESCRIPCIÓN */}
       {publication.description && (

@@ -9,7 +9,14 @@ import {
   AlertCircle, 
   Layers,
   Sparkles,
-  Zap
+  Zap,
+  Lock,
+  Unlock,
+  Users,
+  Heart,
+  Globe,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import { 
   UserPublication, 
@@ -57,6 +64,10 @@ export default function UserPublicationsView({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+
+  // Estado de visibilidad para la nueva publicación (todos, solo_yo, solo_seguidores, solo_fans)
+  const [visibilityState, setVisibilityState] = useState<'todos' | 'solo_yo' | 'solo_seguidores' | 'solo_fans'>('todos');
+  const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -144,6 +155,7 @@ export default function UserPublicationsView({
         userId,
         file: selectedFile,
         description,
+        estado_de_vista: visibilityState,
         authorInfo: {
           displayName: currentUserDisplayName || 'Estudiante',
           username: currentUserUsername || null,
@@ -171,6 +183,8 @@ export default function UserPublicationsView({
     setSelectedFile(null);
     setPreviewUrl(null);
     setDescription('');
+    setVisibilityState('todos');
+    setShowVisibilityMenu(false);
     setCompressing(false);
     setCompressionProgress(0);
     setCompressionStatusText('');
@@ -299,9 +313,9 @@ export default function UserPublicationsView({
             className="hidden"
           />
 
-          {/* Fila inferior de botones: [Agregar Foto] a la izquierda | [Publicar] a la derecha */}
+          {/* Fila inferior de botones: [Agregar Foto] y [Visibilidad] a la izquierda | [Publicar] a la derecha */}
           <div className="flex items-center justify-between pt-1 gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -311,6 +325,127 @@ export default function UserPublicationsView({
                 <ImageIcon className="w-4 h-4 text-emerald-400" />
                 <span>{selectedFile ? 'Cambiar Foto' : 'Agregar Foto'}</span>
               </button>
+
+              {/* Selector de Candado / Visibilidad antes de publicar */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowVisibilityMenu((prev) => !prev)}
+                  disabled={isSubmitting || compressing}
+                  className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    visibilityState === 'solo_yo'
+                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                      : visibilityState === 'solo_seguidores'
+                      ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                      : visibilityState === 'solo_fans'
+                      ? 'bg-pink-500/15 border-pink-500/40 text-pink-300'
+                      : 'bg-[#171821] hover:bg-[#1f212d] border-[#2d2f3d] text-zinc-300 hover:text-white'
+                  }`}
+                  title="Quién puede ver esta publicación"
+                >
+                  {visibilityState === 'solo_yo' ? (
+                    <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  ) : visibilityState === 'solo_seguidores' ? (
+                    <Users className="w-3.5 h-3.5 text-blue-400" />
+                  ) : visibilityState === 'solo_fans' ? (
+                    <Heart className="w-3.5 h-3.5 text-pink-400" />
+                  ) : (
+                    <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                  )}
+                  <span>
+                    {visibilityState === 'solo_yo' ? 'Solo yo' :
+                     visibilityState === 'solo_seguidores' ? 'Solo seguidores' :
+                     visibilityState === 'solo_fans' ? 'Solo fans' : 'Todos'}
+                  </span>
+                  <ChevronDown className="w-3 h-3 opacity-60 ml-0.5" />
+                </button>
+
+                {showVisibilityMenu && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowVisibilityMenu(false)} 
+                    />
+                    <div className="absolute left-0 bottom-full mb-1.5 w-48 bg-[#12131a] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                      <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 border-b border-zinc-800/80">
+                        Visibilidad de publicación
+                      </div>
+
+                      {/* 1. Todos */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisibilityState('todos');
+                          setShowVisibilityMenu(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                          visibilityState === 'todos' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Todos</span>
+                        </span>
+                        {visibilityState === 'todos' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                      </button>
+
+                      {/* 2. Solo yo */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisibilityState('solo_yo');
+                          setShowVisibilityMenu(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                          visibilityState === 'solo_yo' ? 'bg-amber-500/20 text-amber-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Lock className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Solo yo (Ocultar)</span>
+                        </span>
+                        {visibilityState === 'solo_yo' && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                      </button>
+
+                      {/* 3. Solo seguidores */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisibilityState('solo_seguidores');
+                          setShowVisibilityMenu(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                          visibilityState === 'solo_seguidores' ? 'bg-blue-500/20 text-blue-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Users className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Solo seguidores</span>
+                        </span>
+                        {visibilityState === 'solo_seguidores' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                      </button>
+
+                      {/* 4. Solo fans */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisibilityState('solo_fans');
+                          setShowVisibilityMenu(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                          visibilityState === 'solo_fans' ? 'bg-pink-500/20 text-pink-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Heart className="w-3.5 h-3.5 text-pink-400" />
+                          <span>Solo fans</span>
+                        </span>
+                        {visibilityState === 'solo_fans' && <Check className="w-3.5 h-3.5 text-pink-400" />}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             <button
@@ -336,38 +471,53 @@ export default function UserPublicationsView({
       )}
 
       {/* FEED DE PUBLICACIONES */}
-      {loading ? (
-        <div className="py-16 flex flex-col items-center justify-center space-y-3">
-          <Loader2 className="w-8 h-8 text-[#eab308] animate-spin" />
-          <p className="text-xs text-zinc-400 font-mono">Cargando publicaciones...</p>
-        </div>
-      ) : publications.length === 0 ? (
-        <div className="p-10 rounded-2xl bg-[#121318] border border-[#23242d] text-center space-y-4 max-w-3xl mx-auto w-full">
-          <div className="w-14 h-14 mx-auto rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
-            <ImageIcon className="w-7 h-7" />
+      {(() => {
+        // Filtrar publicaciones: si no es el dueño, no puede ver publicaciones en 'solo_yo'
+        const visiblePublications = isOwnProfile 
+          ? publications 
+          : publications.filter((p) => p.estado_de_vista !== 'solo_yo');
+
+        if (loading) {
+          return (
+            <div className="py-16 flex flex-col items-center justify-center space-y-3">
+              <Loader2 className="w-8 h-8 text-[#eab308] animate-spin" />
+              <p className="text-xs text-zinc-400 font-mono">Cargando publicaciones...</p>
+            </div>
+          );
+        }
+
+        if (visiblePublications.length === 0) {
+          return (
+            <div className="p-10 rounded-2xl bg-[#121318] border border-[#23242d] text-center space-y-4 max-w-3xl mx-auto w-full">
+              <div className="w-14 h-14 mx-auto rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+                <ImageIcon className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-white">Sin publicaciones todavía</h4>
+                <p className="text-xs text-zinc-400 max-w-sm mx-auto">
+                  {isOwnProfile
+                    ? 'Aún no has compartido ninguna publicación. ¡Sube tu primera foto y compártela con tus compañeros!'
+                    : 'Este estudiante aún no ha realizado ninguna publicación visible.'}
+                </p>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="space-y-6">
+            {visiblePublications.map((pub) => (
+              <PublicationCard
+                key={pub.id}
+                publication={pub}
+                currentUserId={userId}
+                isOwner={isOwnProfile}
+                onDelete={handleDeletePublication}
+              />
+            ))}
           </div>
-          <div className="space-y-1">
-            <h4 className="text-base font-bold text-white">Sin publicaciones todavía</h4>
-            <p className="text-xs text-zinc-400 max-w-sm mx-auto">
-              {isOwnProfile
-                ? 'Aún no has compartido ninguna publicación. ¡Sube tu primera foto y compártela con tus compañeros!'
-                : 'Este estudiante aún no ha realizado ninguna publicación.'}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {publications.map((pub) => (
-            <PublicationCard
-              key={pub.id}
-              publication={pub}
-              currentUserId={userId}
-              isOwner={isOwnProfile}
-              onDelete={handleDeletePublication}
-            />
-          ))}
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

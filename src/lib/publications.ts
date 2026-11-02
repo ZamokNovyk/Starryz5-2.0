@@ -33,6 +33,7 @@ export interface UserPublication {
   views_count: number;
   shares_count: number;
   description: string;
+  estado_de_vista?: 'todos' | 'solo_yo' | 'solo_seguidores' | 'solo_fans' | string | null;
   user_display_name?: string | null;
   user_username?: string | null;
   user_avatar_url?: string | null;
@@ -44,6 +45,7 @@ export interface CreatePublicationPayload {
   userId: string;
   file: File;
   description: string;
+  estado_de_vista?: 'todos' | 'solo_yo' | 'solo_seguidores' | 'solo_fans' | string;
   authorInfo?: {
     displayName?: string | null;
     username?: string | null;
@@ -171,7 +173,7 @@ export async function getUserPublications(userId: string): Promise<UserPublicati
 export async function createPublication(
   payload: CreatePublicationPayload
 ): Promise<UserPublication> {
-  const { userId, file, description, authorInfo, onProgress } = payload;
+  const { userId, file, description, estado_de_vista, authorInfo, onProgress } = payload;
 
   if (!userId) throw new Error('ID de usuario requerido para publicar.');
   if (!file) throw new Error('Debes seleccionar una imagen para publicar.');
@@ -198,6 +200,7 @@ export async function createPublication(
     user_id: userId,
     image_url: imageUrl,
     description: (description || '').trim(),
+    estado_de_vista: estado_de_vista || 'todos',
     star_1: 0,
     star_2: 0,
     star_3: 0,
@@ -228,6 +231,32 @@ export async function createPublication(
 
   onProgress?.('done');
   return data as UserPublication;
+}
+
+/**
+ * Actualiza la visibilidad de una publicación (todos, solo_yo, solo_seguidores, solo_fans)
+ */
+export async function updatePublicationVisibility(
+  publicationId: string,
+  userId: string,
+  estado_de_vista: string
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('user-publications')
+      .update({ estado_de_vista })
+      .eq('id', publicationId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('[Publications] Error al actualizar estado_de_vista:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Publications] Excepción al actualizar estado_de_vista:', err);
+    return false;
+  }
 }
 
 /**
