@@ -294,7 +294,12 @@ export async function getPublicationReviews(
       return [];
     }
 
-    return (data || []) as PublicationReviewComment[];
+    const list = (data || []).map((item: any) => ({
+      ...item,
+      id: item.id || item.uuid,
+    }));
+
+    return list as PublicationReviewComment[];
   } catch (err) {
     console.warn('[Publications] Excepción al obtener reseñas/comentarios:', err);
     return [];
@@ -322,7 +327,11 @@ export async function getUserPublicationRating(
       .maybeSingle();
 
     if (error || !data) return null;
-    return data as PublicationReviewComment;
+    const row = data as any;
+    return {
+      ...row,
+      id: row.id || row.uuid,
+    } as PublicationReviewComment;
   } catch {
     return null;
   }
@@ -348,7 +357,11 @@ export async function getUserPublicationReview(
       .maybeSingle();
 
     if (error || !data) return null;
-    return data as PublicationReviewComment;
+    const row = data as any;
+    return {
+      ...row,
+      id: row.id || row.uuid,
+    } as PublicationReviewComment;
   } catch {
     return null;
   }
@@ -455,30 +468,49 @@ export async function submitPublicationPureRating(params: {
   const cleanStars = Math.min(5, Math.max(1, Math.round(stars)));
 
   try {
-    const existing = await getUserPublicationRating(publicationId, userUid);
+    // 1. Buscar todas las calificaciones existentes de este usuario en esta publicación
+    const { data: existingRows } = await supabase
+      .from(REVIEWS_TABLE)
+      .select('*')
+      .eq('publication_id', publicationId)
+      .eq('user_uid', userUid)
+      .not('stars', 'is', null)
+      .order('created_at', { ascending: false });
 
-    if (existing) {
-      // Actualiza las estrellas directamente en el registro de calificación / reseña
+    if (existingRows && existingRows.length > 0) {
+      // Tomar la primera fila y actualizar sus estrellas
+      const primaryRow = existingRows[0];
       const { data, error } = await supabase
         .from(REVIEWS_TABLE)
         .update({ stars: cleanStars })
-        .eq('id', existing.id)
-        .select()
-        .single();
+        .eq('id', primaryRow.id)
+        .select();
+
+      // Si por doble clic previo del mouse se crearon filas duplicadas, eliminar las sobrantes
+      if (existingRows.length > 1) {
+        const extraIds = existingRows.slice(1).map((r: any) => r.id).filter(Boolean);
+        if (extraIds.length > 0) {
+          try {
+            await supabase.from(REVIEWS_TABLE).delete().in('id', extraIds);
+          } catch {}
+        }
+      }
 
       if (error) return { success: false, error: error.message };
 
+      const updatedRow = (data && data[0]) ? (data[0] as PublicationReviewComment) : primaryRow;
       const metrics = await recalculatePublicationMetrics(publicationId);
+
       return {
         success: true,
-        updatedReview: data as PublicationReviewComment,
+        updatedReview: updatedRow,
         rating_avg: metrics.rating_avg,
         total_votes: metrics.total_votes,
       };
     }
 
-    // Primera vez que califica: insertar como calificación de estrellas
-    const { data, error } = await supabase
+    // Primera vez que califica: insertar nuevo registro con estrellas
+    const { data: insertedList, error: insertErr } = await supabase
       .from(REVIEWS_TABLE)
       .insert([{
         publication_id: publicationId,
@@ -489,15 +521,16 @@ export async function submitPublicationPureRating(params: {
         user_username: authorInfo?.username || null,
         user_avatar_url: authorInfo?.avatarUrl || null,
       }])
-      .select()
-      .single();
+      .select();
 
-    if (error) return { success: false, error: error.message };
+    if (insertErr) return { success: false, error: insertErr.message };
 
+    const insertedRow = (insertedList && insertedList[0]) ? (insertedList[0] as PublicationReviewComment) : undefined;
     const metrics = await recalculatePublicationMetrics(publicationId);
+
     return {
       success: true,
-      updatedReview: data as PublicationReviewComment,
+      updatedReview: insertedRow,
       rating_avg: metrics.rating_avg,
       total_votes: metrics.total_votes,
     };
@@ -509,7 +542,7 @@ export async function submitPublicationPureRating(params: {
 
 /**
  * Registra o actualiza comentario o reseña:
- * - Si viene con estrellas: se vincula a la única calificación permitida por usuario (actualiza si ya existía una calificación previa).
+ * - Si viene con estrellas: se vincula a la calificación del usuario y actualiza comment y/o stars.
  * - Si es puro comentario (stars == null): se inserta un nuevo comentario independiente.
  */
 export async function submitPublicationReview(params: {
@@ -547,48 +580,84 @@ export async function submitPublicationReview(params: {
     let insertedOrUpdated: any = null;
 
     if (cleanStars !== null) {
-      // El usuario está enviando una reseña (o pura calificación). Buscar si ya tiene calificación previa:
-      const existingRating = await getUserPublicationRating(publicationId, userUid);
+      // El usuario está enviando una reseña (estrellas + comentario). Buscar si ya tiene calificación previa:
+      const { data: existingRows } = await supabase
+        .from(REVIEWS_TABLE)
+        .select('*')
+        .eq('publication_id', publicationId)
+        .eq('user_uid', userUid)
+        .not('stars', 'is', null)
+        .order('created_at', { ascending: false });
 
-      if (existingRating) {
-        // Actualizar su registro de calificación existente con el nuevo comentario y/o estrellas
-        const { data: updated, error: updateErr } = await supabase
+      const existingRating = existingRows && existingRows[0] ? existingRows[0] : null;
+
+      const updatePayload = {
+        stars: cleanStars,
+        comment: cleanComment,
+        user_display_name: authorInfo?.displayName || existingRating?.user_display_name || 'Usuario',
+        user_username: authorInfo?.username || existingRating?.user_username || null,
+        user_avatar_url: authorInfo?.avatarUrl || existingRating?.user_avatar_url || null,
+      };
+
+      if (existingRating && existingRating.id) {
+        // Actualizar su registro de calificación existente por id
+        const { data: updatedList, error: updateErr } = await supabase
           .from(REVIEWS_TABLE)
-          .update({
-            stars: cleanStars,
-            comment: cleanComment,
-            user_display_name: authorInfo?.displayName || existingRating.user_display_name,
-            user_username: authorInfo?.username || existingRating.user_username,
-            user_avatar_url: authorInfo?.avatarUrl || existingRating.user_avatar_url,
-          })
+          .update(updatePayload)
           .eq('id', existingRating.id)
-          .select()
-          .single();
+          .select();
+
+        // Limpiar cualquier duplicado adicional que haya podido generarse previamente
+        if (existingRows && existingRows.length > 1) {
+          const extraIds = existingRows.slice(1).map((r: any) => r.id).filter(Boolean);
+          if (extraIds.length > 0) {
+            try {
+              await supabase.from(REVIEWS_TABLE).delete().in('id', extraIds);
+            } catch {}
+          }
+        }
 
         if (updateErr) return { success: false, error: updateErr.message };
-        insertedOrUpdated = updated;
-      } else {
-        // Crear nuevo registro con estrellas
-        const { data: inserted, error: insertErr } = await supabase
+
+        if (updatedList && updatedList[0]) {
+          insertedOrUpdated = updatedList[0];
+        }
+      }
+
+      if (!insertedOrUpdated) {
+        // Intentar actualizar buscando por publication_id y user_uid donde stars no sea null
+        const { data: retryList } = await supabase
+          .from(REVIEWS_TABLE)
+          .update(updatePayload)
+          .eq('publication_id', publicationId)
+          .eq('user_uid', userUid)
+          .not('stars', 'is', null)
+          .select();
+
+        if (retryList && retryList[0]) {
+          insertedOrUpdated = retryList[0];
+        }
+      }
+
+      if (!insertedOrUpdated) {
+        // Si no existía registro previo, insertar nuevo
+        const { data: insertedList, error: insertErr } = await supabase
           .from(REVIEWS_TABLE)
           .insert([{
             publication_id: publicationId,
             user_uid: userUid,
-            stars: cleanStars,
-            comment: cleanComment,
-            user_display_name: authorInfo?.displayName || 'Usuario',
-            user_username: authorInfo?.username || null,
-            user_avatar_url: authorInfo?.avatarUrl || null,
+            ...updatePayload,
           }])
-          .select()
-          .single();
+          .select();
 
         if (insertErr) return { success: false, error: insertErr.message };
-        insertedOrUpdated = inserted;
+        if (insertedList && insertedList[0]) {
+          insertedOrUpdated = insertedList[0];
+        }
       }
     } else {
       // Puro comentario sin estrellas: se crea un nuevo comentario independiente
-      const { data: inserted, error: insertErr } = await supabase
+      const { data: insertedList, error: insertErr } = await supabase
         .from(REVIEWS_TABLE)
         .insert([{
           publication_id: publicationId,
@@ -599,11 +668,12 @@ export async function submitPublicationReview(params: {
           user_username: authorInfo?.username || null,
           user_avatar_url: authorInfo?.avatarUrl || null,
         }])
-        .select()
-        .single();
+        .select();
 
       if (insertErr) return { success: false, error: insertErr.message };
-      insertedOrUpdated = inserted;
+      if (insertedList && insertedList[0]) {
+        insertedOrUpdated = insertedList[0];
+      }
     }
 
     const metrics = await recalculatePublicationMetrics(publicationId);
@@ -655,21 +725,21 @@ export async function updatePublicationReviewComment(params: {
       updatePayload.stars = cleanStars;
     }
 
-    const { data: updated, error } = await supabase
+    const { data: updatedList, error } = await supabase
       .from(REVIEWS_TABLE)
       .update(updatePayload)
       .eq('id', reviewId)
       .eq('user_uid', userUid)
-      .select()
-      .single();
+      .select();
 
     if (error) return { success: false, error: error.message };
 
+    const updatedRow = updatedList && updatedList[0] ? updatedList[0] : null;
     const metrics = await recalculatePublicationMetrics(publicationId);
 
     return {
       success: true,
-      updatedReview: updated as PublicationReviewComment,
+      updatedReview: updatedRow as PublicationReviewComment,
       rating_avg: metrics.rating_avg,
       total_votes: metrics.total_votes,
       comments_count: metrics.comments_count,

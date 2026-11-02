@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Star, 
   MessageSquare, 
@@ -53,6 +53,10 @@ export default function PublicationCard({
 }: PublicationCardProps) {
   const { user } = useAuth();
   const effectiveUserId = propUserId || user?.uid || null;
+
+  // Control anti-doble clic rápido (mouse defectuoso / rebotes)
+  const isVotingRef = useRef(false);
+  const lastVoteTimeRef = useRef(0);
 
   // Estados de interacción
   const [userVote, setUserVote] = useState<number | null>(null);
@@ -222,6 +226,14 @@ export default function PublicationCard({
       return;
     }
 
+    // Prevención estricta de doble clic rápido (debounce de 600ms y bloqueo activo)
+    const now = Date.now();
+    if (isVotingRef.current || (now - lastVoteTimeRef.current < 600)) {
+      return;
+    }
+    isVotingRef.current = true;
+    lastVoteTimeRef.current = now;
+
     playStarAudio(stars);
     setUserVote(stars);
     setReviewStars(stars);
@@ -256,6 +268,10 @@ export default function PublicationCard({
       }
     } catch (e) {
       console.warn('Error al votar estrellas:', e);
+    } finally {
+      setTimeout(() => {
+        isVotingRef.current = false;
+      }, 350);
     }
   };
 
@@ -271,8 +287,8 @@ export default function PublicationCard({
     const isReseña = commentMode === 'reseña';
 
     if (isReseña) {
-      if (!reviewStars) {
-        alert('Por favor selecciona las estrellas para tu reseña.');
+      if (!userVote) {
+        alert('Para dejar una reseña, primero califica esta publicación con las estrellas de arriba.');
         return;
       }
       if (!trimmed) {
@@ -287,7 +303,7 @@ export default function PublicationCard({
 
     try {
       setSubmittingReview(true);
-      const chosenStars = isReseña ? reviewStars : null;
+      const chosenStars = isReseña ? userVote : null;
 
       if (chosenStars) {
         playStarAudio(chosenStars);
@@ -306,10 +322,11 @@ export default function PublicationCard({
 
       if (res.success) {
         if (res.newReview) {
+          const revId = res.newReview.id || (res.newReview as any).uuid;
           setCommentsList((prev) => {
-            const exists = prev.some((r) => r.id === res.newReview!.id);
+            const exists = prev.some((r) => (r.id || (r as any).uuid) === revId);
             if (exists) {
-              return prev.map((r) => r.id === res.newReview!.id ? res.newReview! : r);
+              return prev.map((r) => ((r.id || (r as any).uuid) === revId ? res.newReview! : r));
             }
             return [res.newReview!, ...prev];
           });
@@ -780,7 +797,7 @@ export default function PublicationCard({
             {/* Formulario según pestaña activa */}
             <form onSubmit={handleSubmitComment} className="space-y-3">
               {commentMode === 'reseña' ? (
-                /* MODO RESEÑA: Selector de estrellas obligatorio + Texto */
+                /* MODO RESEÑA: Las estrellas reflejan estrictamente la calificación superior y NO se modifican aquí */
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -788,58 +805,58 @@ export default function PublicationCard({
                       <span>Calificación de tu reseña:</span>
                     </span>
 
-                    {/* Selector de 5 estrellas para la reseña */}
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button
-                          key={star}
-                          type="button"
-                          onClick={() => {
-                            playStarAudio(star);
-                            setReviewStars(star);
-                          }}
-                          title={`${star} estrellas`}
-                          className="p-1 hover:scale-125 transition-transform cursor-pointer"
-                        >
+                    {/* Estrellas fijas (de solo lectura) sincronizadas con las estrellas grandes de arriba */}
+                    {userVote ? (
+                      <div className="flex items-center gap-1 bg-[#1a1708] border border-[#524515] px-2 py-0.5 rounded-lg select-none" title="Calificación fija seleccionada en las estrellas de arriba">
+                        {[1, 2, 3, 4, 5].map((star) => (
                           <Star
-                            className={`w-5 h-5 ${
-                              reviewStars !== null && star <= reviewStars
-                                ? 'fill-[#facc15] text-[#facc15] drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]'
+                            key={star}
+                            className={`w-4 h-4 ${
+                              star <= userVote
+                                ? 'fill-[#facc15] text-[#facc15] drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]'
                                 : 'text-zinc-600'
                             }`}
                           />
-                        </button>
-                      ))}
-                      {reviewStars && (
-                        <span className="text-xs font-bold text-[#facc15] ml-1">
-                          ({reviewStars}★)
+                        ))}
+                        <span className="text-xs font-black text-[#facc15] ml-1">
+                          ({userVote}★)
                         </span>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-amber-400 font-semibold">
+                        Sin calificar arriba
+                      </span>
+                    )}
                   </div>
 
-                  {hasExistingReview && (
+                  {!userVote ? (
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+                      <span>Para poder dejar tu reseña, <strong>primero califica la publicación</strong> en las estrellas grandes de arriba.</span>
+                    </div>
+                  ) : hasExistingReview ? (
                     <p className="text-[11px] text-zinc-400">
-                      Ya tienes una reseña publicada. Al enviar una nueva, se actualizará tu calificación y comentario.
+                      Ya tienes una reseña. Al enviar se actualizará tu comentario con tu calificación actual de {userVote} estrellas.
                     </p>
-                  )}
+                  ) : null}
 
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
+                      disabled={!userVote}
                       placeholder={
-                        reviewStars
-                          ? `Escribe tu reseña detallada con ${reviewStars} estrellas...`
-                          : 'Selecciona las estrellas y escribe tu reseña...'
+                        userVote
+                          ? `Escribe tu reseña con ${userVote} estrellas...`
+                          : 'Primero califica con las estrellas de arriba...'
                       }
                       maxLength={400}
-                      className="flex-1 bg-[#14151b] border border-zinc-700/80 focus:border-amber-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-colors"
+                      className="flex-1 bg-[#14151b] border border-zinc-700/80 focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-colors"
                     />
                     <button
                       type="submit"
-                      disabled={submittingReview || !commentText.trim() || !reviewStars}
+                      disabled={submittingReview || !commentText.trim() || !userVote}
                       className="px-4 py-2 rounded-xl bg-[#eab308] hover:bg-yellow-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-md flex-shrink-0"
                     >
                       {submittingReview ? (
@@ -937,12 +954,13 @@ export default function PublicationCard({
               }
 
               return displayed.map((rev) => {
+                const reviewKey = rev.id || (rev as any).uuid;
                 const isMyReview = Boolean(effectiveUserId && rev.user_uid === effectiveUserId);
-                const isEditingThis = editingReviewId === rev.id;
+                const isEditingThis = editingReviewId === reviewKey;
 
                 return (
                   <div
-                    key={rev.id}
+                    key={reviewKey}
                     className="bg-[#14151b] border border-zinc-800/60 rounded-xl p-3 space-y-2 shadow-sm transition-colors hover:border-zinc-700/60"
                   >
                     {/* Header del comentario: autor, estrellas, fecha, botones editar/borrar */}
@@ -983,19 +1001,22 @@ export default function PublicationCard({
                         {/* Botones de Editar y Borrar para el autor */}
                         {isMyReview && !isEditingThis && (
                           <div className="flex items-center gap-1 ml-1 border-l border-zinc-800 pl-1.5">
+                            {/* Solo los comentarios puros (sin estrellas) pueden editarse aquí; las reseñas se actualizan desde su panel */}
+                            {!rev.stars && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(rev)}
+                                className="p-1 text-zinc-400 hover:text-amber-400 transition-colors rounded-md hover:bg-zinc-800 cursor-pointer"
+                                title="Editar comentario"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => handleStartEdit(rev)}
-                              className="p-1 text-zinc-400 hover:text-amber-400 transition-colors rounded-md hover:bg-zinc-800 cursor-pointer"
-                              title="Editar comentario o reseña"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteComment(rev.id, Boolean(rev.stars))}
+                              onClick={() => handleDeleteComment(reviewKey, Boolean(rev.stars))}
                               className="p-1 text-zinc-400 hover:text-red-400 transition-colors rounded-md hover:bg-zinc-800 cursor-pointer"
-                              title="Eliminar comentario o reseña"
+                              title={rev.stars ? "Eliminar reseña" : "Eliminar comentario"}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1007,42 +1028,29 @@ export default function PublicationCard({
                     {/* MODO EDICIÓN */}
                     {isEditingThis ? (
                       <div className="space-y-2 pt-1 border-t border-zinc-800/60 animate-in fade-in duration-150">
-                        {/* Selector de estrellas si era o quiere ser reseña */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                            Estrellas:
-                          </span>
-                          <div className="flex items-center gap-1">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button
-                                key={star}
-                                type="button"
-                                onClick={() => {
-                                  playStarAudio(star);
-                                  setEditingStars(editingStars === star ? null : star);
-                                }}
-                                className="p-0.5 hover:scale-110 transition-transform cursor-pointer"
-                              >
+                        {rev.stars ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                              <Star className="w-3 h-3 text-[#facc15] fill-[#facc15]" />
+                              <span>Calificación de tu reseña:</span>
+                            </span>
+                            <div className="flex items-center gap-1 bg-[#1a1708] border border-[#524515] px-2 py-0.5 rounded-lg select-none">
+                              {[1, 2, 3, 4, 5].map((star) => (
                                 <Star
+                                  key={star}
                                   className={`w-3.5 h-3.5 ${
-                                    editingStars !== null && star <= editingStars
+                                    star <= (rev.stars || 0)
                                       ? 'fill-[#facc15] text-[#facc15]'
                                       : 'text-zinc-600'
                                   }`}
                                 />
-                              </button>
-                            ))}
-                            {editingStars && (
-                              <button
-                                type="button"
-                                onClick={() => setEditingStars(null)}
-                                className="text-[9px] text-zinc-500 hover:text-zinc-300 ml-1 underline cursor-pointer"
-                              >
-                                Quitar
-                              </button>
-                            )}
+                              ))}
+                              <span className="text-[10px] font-bold text-[#facc15] ml-1">
+                                ({rev.stars}★)
+                              </span>
+                            </div>
                           </div>
-                        </div>
+                        ) : null}
 
                         {/* Texto de edición */}
                         <textarea
@@ -1065,7 +1073,7 @@ export default function PublicationCard({
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleSaveEdit(rev.id)}
+                            onClick={() => handleSaveEdit(reviewKey)}
                             disabled={savingEdit || (!editingCommentText.trim() && editingStars === null)}
                             className="px-3 py-1 rounded-lg bg-[#eab308] hover:bg-yellow-400 text-black font-black text-[11px] flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-40"
                           >
