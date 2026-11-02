@@ -1660,7 +1660,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                         setIsEditingDescription(true);
                       }}
                       title="Editar descripción"
-                      className="opacity-0 group-hover:opacity-100 mt-0.5 p-1 rounded-md text-zinc-500 hover:text-amber-400 hover:bg-zinc-800 transition-all cursor-pointer flex-shrink-0"
+                      className="mt-0.5 p-1 rounded-md text-zinc-500 hover:text-amber-400 hover:bg-zinc-800 transition-all cursor-pointer flex-shrink-0"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
@@ -1708,7 +1708,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             }`}
             title={isSelfProfile ? 'Seguidores acumulados' : currentVote === 'yo_te_conozco' ? 'Dejar de seguir' : 'Seguir usuario'}
           >
-            <span className="block text-[11px] font-black uppercase tracking-wider text-amber-400 mb-1">
+            <span className="block text-[11px] font-black uppercase tracking-wider text-sky-400 mb-1">
               {isSelfProfile ? 'SEGUIDORES' : currentVote === 'yo_te_conozco' ? 'SIGUIENDO' : 'SEGUIR'}
             </span>
             <span className="block text-2xl sm:text-3xl font-black text-white tracking-tight">

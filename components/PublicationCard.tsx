@@ -80,10 +80,11 @@ export default function PublicationCard({
   // Estados de comentarios y filtros ("Todo" vs "Mi interacción")
   const [showComments, setShowComments] = useState(false);
   const [commentsFilter, setCommentsFilter] = useState<'todo' | 'mi_interaccion'>('todo');
+  const [commentMode, setCommentMode] = useState<'comentario' | 'reseña'>('comentario');
   const [commentsList, setCommentsList] = useState<PublicationReviewComment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentText, setCommentText] = useState('');
-  const [modalSelectedStars, setModalSelectedStars] = useState<number | null>(null);
+  const [reviewStars, setReviewStars] = useState<number | null>(null);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [commentsCount, setCommentsCount] = useState<number>(publication.comments_count || 0);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
@@ -98,8 +99,8 @@ export default function PublicationCard({
   const [showShareModal, setShowShareModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // ¿El usuario tiene una calificación vinculada a una reseña con comentario escrito?
-  const hasReviewLocked = Boolean(
+  // ¿El usuario ya tiene una reseña (calificación con comentario de texto)?
+  const hasExistingReview = Boolean(
     userRatingRecord &&
     userRatingRecord.stars !== null &&
     userRatingRecord.comment &&
@@ -118,7 +119,9 @@ export default function PublicationCard({
   // Formateo de fecha relativa amigable (ej: "Hace 2 horas")
   const formatTimeAgo = (dateStr: string) => {
     try {
+      if (!dateStr) return 'Reciente';
       const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return 'Reciente';
       const now = new Date();
       const diffSecs = Math.floor((now.getTime() - date.getTime()) / 1000);
 
@@ -163,11 +166,11 @@ export default function PublicationCard({
             setUserRatingRecord(ratingRecord);
             setUserVote(ratingRecord.stars);
             // Refleja en las estrellas de comentario las que dejó previamente como calificación
-            setModalSelectedStars(ratingRecord.stars);
+            setReviewStars(ratingRecord.stars);
           } else {
             setUserRatingRecord(null);
             setUserVote(null);
-            setModalSelectedStars(null);
+            setReviewStars(null);
           }
         }
       } catch (e) {}
@@ -202,9 +205,10 @@ export default function PublicationCard({
       try {
         setLoadingComments(true);
         const reviews = await getPublicationReviews(publication.id);
-        setCommentsList(reviews);
+        setCommentsList(Array.isArray(reviews) ? reviews : []);
       } catch (err) {
         console.warn('Error al cargar comentarios:', err);
+        setCommentsList([]);
       } finally {
         setLoadingComments(false);
       }
@@ -218,16 +222,9 @@ export default function PublicationCard({
       return;
     }
 
-    // REGLA: Si está atada a una reseña con comentario, no puede cambiarla directamente con un clic
-    if (hasReviewLocked) {
-      setRatingErrorMsg('Tu calificación está vinculada a una reseña. Para modificar tus estrellas, edita o elimina tu reseña en los comentarios.');
-      setTimeout(() => setRatingErrorMsg(null), 5000);
-      return;
-    }
-
     playStarAudio(stars);
     setUserVote(stars);
-    setModalSelectedStars(stars);
+    setReviewStars(stars);
     setRatingErrorMsg(null);
 
     try {
@@ -253,8 +250,8 @@ export default function PublicationCard({
         }
         setFeedbackMsg(`¡Calificado con ${stars} ${stars === 1 ? 'estrella' : 'estrellas'}!`);
         setTimeout(() => setFeedbackMsg(null), 3000);
-      } else if (res.hasReviewLocked) {
-        setRatingErrorMsg(res.error || 'Tu calificación está vinculada a una reseña.');
+      } else if (res.error) {
+        setRatingErrorMsg(res.error);
         setTimeout(() => setRatingErrorMsg(null), 5000);
       }
     } catch (e) {
@@ -271,20 +268,35 @@ export default function PublicationCard({
     }
 
     const trimmed = commentText.trim();
-    if (!trimmed && modalSelectedStars === null) {
-      return;
+    const isReseña = commentMode === 'reseña';
+
+    if (isReseña) {
+      if (!reviewStars) {
+        alert('Por favor selecciona las estrellas para tu reseña.');
+        return;
+      }
+      if (!trimmed) {
+        alert('Por favor escribe tu reseña.');
+        return;
+      }
+    } else {
+      if (!trimmed) {
+        return;
+      }
     }
 
     try {
       setSubmittingReview(true);
-      if (modalSelectedStars) {
-        playStarAudio(modalSelectedStars);
+      const chosenStars = isReseña ? reviewStars : null;
+
+      if (chosenStars) {
+        playStarAudio(chosenStars);
       }
 
       const res = await submitPublicationReview({
         publicationId: publication.id,
         userUid: effectiveUserId,
-        stars: modalSelectedStars,
+        stars: chosenStars,
         comment: trimmed || null,
         authorInfo: {
           displayName: user?.displayName || 'Usuario Starryz',
@@ -305,7 +317,7 @@ export default function PublicationCard({
           if (res.newReview.stars) {
             setUserRatingRecord(res.newReview);
             setUserVote(res.newReview.stars);
-            setModalSelectedStars(res.newReview.stars);
+            setReviewStars(res.newReview.stars);
           }
         }
         if (typeof res.rating_avg === 'number') {
@@ -318,7 +330,7 @@ export default function PublicationCard({
           setCommentsCount(res.comments_count);
         }
         setCommentText('');
-        setFeedbackMsg(modalSelectedStars ? '¡Reseña publicada con éxito!' : '¡Comentario publicado con éxito!');
+        setFeedbackMsg(isReseña ? '¡Reseña guardada con éxito!' : '¡Comentario publicado con éxito!');
         setTimeout(() => setFeedbackMsg(null), 3000);
       } else if (res.error) {
         alert(res.error);
@@ -366,7 +378,7 @@ export default function PublicationCard({
         if (res.updatedReview.stars !== null) {
           setUserRatingRecord(res.updatedReview);
           setUserVote(res.updatedReview.stars);
-          setModalSelectedStars(res.updatedReview.stars);
+          setReviewStars(res.updatedReview.stars);
         }
         if (typeof res.rating_avg === 'number') {
           setPublicationAvg(res.rating_avg.toFixed(2));
@@ -402,7 +414,7 @@ export default function PublicationCard({
         if (hadStars) {
           setUserRatingRecord(null);
           setUserVote(null);
-          setModalSelectedStars(null);
+          setReviewStars(null);
         }
         if (typeof res.rating_avg === 'number') {
           setPublicationAvg(res.rating_avg.toFixed(2));
@@ -723,74 +735,151 @@ export default function PublicationCard({
       {/* SECCIÓN EXPANDIBLE DE RESEÑAS Y COMENTARIOS */}
       {showComments && (
         <div className="pt-3 border-t border-zinc-800/80 space-y-4 animate-in fade-in duration-200">
-          {/* Formulario para escribir comentario / reseña */}
-          <form onSubmit={handleSubmitComment} className="space-y-3 bg-[#0c0d12] border border-zinc-800/80 rounded-2xl p-3 sm:p-4">
-            <div className="flex items-center justify-between gap-2 flex-wrap pb-1">
-              <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
-                Deja tu comentario o reseña:
-              </span>
-
-              {/* Selector de estrellas opcional para el comentario / reseña */}
-              <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    onClick={() => {
-                      playStarAudio(star);
-                      setModalSelectedStars(modalSelectedStars === star ? null : star);
-                    }}
-                    title={`${star} estrellas`}
-                    className="p-1 hover:scale-110 transition-transform cursor-pointer"
-                  >
-                    <Star
-                      className={`w-4 h-4 ${
-                        modalSelectedStars !== null && star <= modalSelectedStars
-                          ? 'fill-[#facc15] text-[#facc15]'
-                          : 'text-zinc-600'
-                      }`}
-                    />
-                  </button>
-                ))}
-                {modalSelectedStars && (
-                  <button
-                    type="button"
-                    onClick={() => setModalSelectedStars(null)}
-                    className="text-[10px] text-zinc-500 hover:text-zinc-300 ml-1 underline cursor-pointer"
-                  >
-                    Quitar estrellas
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder={
-                  modalSelectedStars
-                    ? `Escribe tu reseña con ${modalSelectedStars} estrellas...`
-                    : 'Escribe un comentario público...'
-                }
-                maxLength={400}
-                className="flex-1 bg-[#14151b] border border-zinc-700/80 focus:border-amber-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-colors"
-              />
+          {/* Formulario para escribir comentario / reseña con PESTAÑAS SEPARADAS */}
+          <div className="bg-[#0c0d12] border border-zinc-800/80 rounded-2xl p-3 sm:p-4 space-y-3">
+            {/* Selector de pestañas: Comentario vs Reseña */}
+            <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-2.5">
               <button
-                type="submit"
-                disabled={submittingReview || (!commentText.trim() && modalSelectedStars === null)}
-                className="px-4 py-2 rounded-xl bg-[#eab308] hover:bg-yellow-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+                type="button"
+                onClick={() => setCommentMode('comentario')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                  commentMode === 'comentario'
+                    ? 'bg-zinc-800 text-white shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60'
+                }`}
               >
-                {submittingReview ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Send className="w-3.5 h-3.5" />
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Comentario</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCommentMode('reseña');
+                  // Si no tiene estrellas de reseña seleccionadas pero ya votó en la barra grande, precargar
+                  if (!reviewStars && userVote) {
+                    setReviewStars(userVote);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                  commentMode === 'reseña'
+                    ? 'bg-[#eab308]/15 border border-[#eab308]/40 text-[#facc15] shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60'
+                }`}
+              >
+                <Star className="w-3.5 h-3.5" />
+                <span>Reseña (1 por usuario)</span>
+                {hasExistingReview && (
+                  <span className="text-[10px] px-1 rounded bg-[#eab308]/20 text-[#facc15]">
+                    Activa
+                  </span>
                 )}
-                <span>Enviar</span>
               </button>
             </div>
-          </form>
+
+            {/* Formulario según pestaña activa */}
+            <form onSubmit={handleSubmitComment} className="space-y-3">
+              {commentMode === 'reseña' ? (
+                /* MODO RESEÑA: Selector de estrellas obligatorio + Texto */
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Star className="w-3.5 h-3.5 text-[#facc15] fill-[#facc15]" />
+                      <span>Calificación de tu reseña:</span>
+                    </span>
+
+                    {/* Selector de 5 estrellas para la reseña */}
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => {
+                            playStarAudio(star);
+                            setReviewStars(star);
+                          }}
+                          title={`${star} estrellas`}
+                          className="p-1 hover:scale-125 transition-transform cursor-pointer"
+                        >
+                          <Star
+                            className={`w-5 h-5 ${
+                              reviewStars !== null && star <= reviewStars
+                                ? 'fill-[#facc15] text-[#facc15] drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]'
+                                : 'text-zinc-600'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                      {reviewStars && (
+                        <span className="text-xs font-bold text-[#facc15] ml-1">
+                          ({reviewStars}★)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {hasExistingReview && (
+                    <p className="text-[11px] text-zinc-400">
+                      Ya tienes una reseña publicada. Al enviar una nueva, se actualizará tu calificación y comentario.
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      placeholder={
+                        reviewStars
+                          ? `Escribe tu reseña detallada con ${reviewStars} estrellas...`
+                          : 'Selecciona las estrellas y escribe tu reseña...'
+                      }
+                      maxLength={400}
+                      className="flex-1 bg-[#14151b] border border-zinc-700/80 focus:border-amber-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-colors"
+                    />
+                    <button
+                      type="submit"
+                      disabled={submittingReview || !commentText.trim() || !reviewStars}
+                      className="px-4 py-2 rounded-xl bg-[#eab308] hover:bg-yellow-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-md flex-shrink-0"
+                    >
+                      {submittingReview ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Send className="w-3.5 h-3.5" />
+                      )}
+                      <span>{hasExistingReview ? 'Actualizar' : 'Publicar Reseña'}</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* MODO COMENTARIO: Múltiples comentarios públicos de texto */
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      placeholder="Escribe un comentario público (puedes comentar varias veces)..."
+                      maxLength={400}
+                      className="flex-1 bg-[#14151b] border border-zinc-700/80 focus:border-blue-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-colors"
+                    />
+                    <button
+                      type="submit"
+                      disabled={submittingReview || !commentText.trim()}
+                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-md flex-shrink-0"
+                    >
+                      {submittingReview ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Send className="w-3.5 h-3.5" />
+                      )}
+                      <span>Comentar</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </form>
+          </div>
 
           {/* DIVISIÓN DE PESTAÑAS: TODO Y MI INTERACCIÓN */}
           <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-2">
@@ -805,7 +894,7 @@ export default function PublicationCard({
             >
               <span>Todo</span>
               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-900 border border-zinc-700/60 text-zinc-400">
-                {commentsList.length}
+                {(commentsList || []).length}
               </span>
             </button>
 
@@ -820,7 +909,7 @@ export default function PublicationCard({
             >
               <span>Mi interacción</span>
               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-900 border border-zinc-700/60 text-amber-400">
-                {commentsList.filter((c) => effectiveUserId && c.user_uid === effectiveUserId).length}
+                {(commentsList || []).filter((c) => effectiveUserId && c?.user_uid === effectiveUserId).length}
               </span>
             </button>
           </div>
@@ -833,8 +922,9 @@ export default function PublicationCard({
                 <span>Cargando comentarios...</span>
               </div>
             ) : (() => {
-              const myComments = commentsList.filter((c) => effectiveUserId && c.user_uid === effectiveUserId);
-              const displayed = commentsFilter === 'todo' ? commentsList : myComments;
+              const safeList = Array.isArray(commentsList) ? commentsList : [];
+              const myComments = safeList.filter((c) => effectiveUserId && c?.user_uid === effectiveUserId);
+              const displayed = commentsFilter === 'todo' ? safeList : myComments;
 
               if (displayed.length === 0) {
                 return (

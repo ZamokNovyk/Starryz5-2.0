@@ -427,8 +427,8 @@ export async function recalculatePublicationMetrics(publicationId: string): Prom
 
 /**
  * Calificación directa con puras estrellas (barra grande):
- * - Si el usuario ya dejó una reseña (calificación con comentario de texto), se bloquea y avisa que debe editar/borrar su reseña.
- * - Si no tenía calificación o era pura calificación, actualiza o inserta la calificación y recalcula métricas.
+ * - Permite calificar o cambiar la calificación en cualquier momento sin bloquear al usuario.
+ * - Si ya tenía calificación o reseña previa, actualiza las estrellas y recalcula métricas.
  */
 export async function submitPublicationPureRating(params: {
   publicationId: string;
@@ -458,16 +458,7 @@ export async function submitPublicationPureRating(params: {
     const existing = await getUserPublicationRating(publicationId, userUid);
 
     if (existing) {
-      // Si la calificación tiene texto escrito, ¡es una reseña vinculada!
-      if (existing.comment && existing.comment.trim() !== '') {
-        return {
-          success: false,
-          hasReviewLocked: true,
-          error: 'Tu calificación está vinculada a una reseña. Para cambiar tus estrellas, edita o elimina tu reseña en la sección de comentarios.',
-        };
-      }
-
-      // Si era pura calificación sin comentario, se puede cambiar libremente
+      // Actualiza las estrellas directamente en el registro de calificación / reseña
       const { data, error } = await supabase
         .from(REVIEWS_TABLE)
         .update({ stars: cleanStars })
@@ -486,7 +477,7 @@ export async function submitPublicationPureRating(params: {
       };
     }
 
-    // Primera vez que califica: insertar como pura calificación
+    // Primera vez que califica: insertar como calificación de estrellas
     const { data, error } = await supabase
       .from(REVIEWS_TABLE)
       .insert([{
