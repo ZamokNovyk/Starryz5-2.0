@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/src/lib/supabase';
@@ -74,7 +74,9 @@ import {
   toggleUserActitudVote,
   getUserGivenInteractions,
   removeUserGivenInteraction,
-  UserInteractionViewItem
+  getProfileFollowers,
+  UserInteractionViewItem,
+  type FollowerInfo
 } from '@/src/lib/userActitud';
 import { getUserCrushesCount, hasUserCrushed, toggleUserCrush } from '@/src/lib/userCrushes';
 import { getAdminDashboardMetrics, AdminDashboardData } from '@/src/lib/admin';
@@ -205,6 +207,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [knowCount, setKnowCount] = useState(0);
   const [fanCount, setFanCount] = useState(0);
   const [currentVote, setCurrentVote] = useState<'yo_te_conozco' | 'fans' | null>(null);
+
+  // Modal de Seguidores / Fans
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [followersModalTab, setFollowersModalTab] = useState<'seguidores' | 'fans'>('seguidores');
+  const [followersList, setFollowersList] = useState<{ seguidores: FollowerInfo[]; fans: FollowerInfo[] }>({ seguidores: [], fans: [] });
+  const [loadingFollowers, setLoadingFollowers] = useState(false);
 
   const isSelfProfile = isOwnProfile || (uid && user && uid === user.uid);
 
@@ -1741,7 +1749,104 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
         </div>
 
+        {/* BotÃ³n 3 barras: Ver Seguidores y Fans */}
+        <div className="flex justify-center mt-3">
+          <button
+            type="button"
+            onClick={async () => {
+              setShowFollowersModal(true);
+              setLoadingFollowers(true);
+              try {
+                const targetId = uid || user?.uid || dbUser?.id;
+                if (targetId) {
+                  const result = await getProfileFollowers(targetId);
+                  setFollowersList(result);
+                }
+              } catch (e) {
+                console.error('Error cargando seguidores:', e);
+              } finally {
+                setLoadingFollowers(false);
+              }
+            }}
+            className="flex flex-col items-center gap-0.5 p-2 rounded-xl hover:bg-zinc-800/60 transition-all group"
+            title="Ver seguidores y fans"
+          >
+            <div className="w-6 h-[3px] rounded-full bg-zinc-500 group-hover:bg-zinc-300 transition-colors"></div>
+            <div className="w-3 h-[3px] rounded-full bg-zinc-500 group-hover:bg-zinc-300 transition-colors self-center"></div>
+            <div className="w-4 h-[3px] rounded-full bg-zinc-500 group-hover:bg-zinc-300 transition-colors"></div>
+          </button>
+        </div>
+
       </div>
+
+      {/* Modal de Seguidores y Fans */}
+      {showFollowersModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowFollowersModal(false); }}
+        >
+          <div className="bg-[#0f0f12] border border-zinc-800 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800/80">
+              <h3 className="text-white font-black text-base">Seguidores y Fans</h3>
+              <button
+                type="button"
+                onClick={() => setShowFollowersModal(false)}
+                className="text-zinc-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-zinc-800"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="flex border-b border-zinc-800/80">
+              <button
+                type="button"
+                onClick={() => setFollowersModalTab('seguidores')}
+                className={`flex-1 py-3 text-xs font-black uppercase tracking-wider transition-colors ${followersModalTab === 'seguidores' ? 'text-sky-400 border-b-2 border-sky-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                Seguidores ({followersList.seguidores.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFollowersModalTab('fans')}
+                className={`flex-1 py-3 text-xs font-black uppercase tracking-wider transition-colors ${followersModalTab === 'fans' ? 'text-pink-400 border-b-2 border-pink-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                Fans ({followersList.fans.length})
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {loadingFollowers ? (
+                <div className="flex justify-center py-8">
+                  <svg className="w-6 h-6 text-amber-400 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                  </svg>
+                </div>
+              ) : (
+                (() => {
+                  const list = followersModalTab === 'seguidores' ? followersList.seguidores : followersList.fans;
+                  if (list.length === 0) {
+                    return (
+                      <p className="text-center text-zinc-500 text-sm py-8">
+                        {followersModalTab === 'seguidores' ? 'Aun no tienes seguidores.' : 'Aun no tienes fans.'}
+                      </p>
+                    );
+                  }
+                  return list.map((item) => (
+                    <div key={item.voter_uid} className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/60 transition-colors">
+                      <img
+                        src={item.photo_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=60&auto=format&fit=crop&q=80'}
+                        alt={item.display_name}
+                        className="w-10 h-10 rounded-full object-cover border border-zinc-700 flex-shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=60&auto=format&fit=crop&q=80'; }}
+                      />
+                      <span className="text-white text-sm font-semibold truncate">{item.display_name}</span>
+                    </div>
+                  ));
+                })()
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Navegación Principal de Pestañas (Horizontal ancha idéntica al diseño) */}
       <div className="space-y-4">

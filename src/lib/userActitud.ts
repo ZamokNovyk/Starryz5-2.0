@@ -477,3 +477,69 @@ export async function removeUserGivenInteraction(
   }
 }
 
+
+
+/**
+ * Obtiene la lista de seguidores y fans de un perfil dado.
+ * Retorna dos arrays: seguidores (yo_te_conozco) y fans (fans),
+ * cada uno con display_name y photo_url del votante.
+ */
+export interface FollowerInfo {
+  voter_uid: string;
+  display_name: string;
+  photo_url: string | null;
+}
+
+export async function getProfileFollowers(targetUserId: string): Promise<{
+  seguidores: FollowerInfo[];
+  fans: FollowerInfo[];
+}> {
+  const empty = { seguidores: [], fans: [] };
+  if (!targetUserId) return empty;
+
+  try {
+    const { data, error } = await supabase
+      .from('users_actitud')
+      .select('voter_uid, attitude_type')
+      .eq('target_user_id', targetUserId);
+
+    if (error || !data || data.length === 0) return empty;
+
+    const seguidoresUids = data
+      .filter((r: any) => r.attitude_type === 'yo_te_conozco')
+      .map((r: any) => r.voter_uid);
+
+    const fansUids = data
+      .filter((r: any) => r.attitude_type === 'fans')
+      .map((r: any) => r.voter_uid);
+
+    const allUids = [...new Set([...seguidoresUids, ...fansUids])];
+    if (allUids.length === 0) return empty;
+
+    const { data: usersData, error: usersError } = await supabase
+      .from('users')
+      .select('id, display_name, photo_url')
+      .in('id', allUids);
+
+    if (usersError || !usersData) return empty;
+
+    const userMap: Record<string, { display_name: string; photo_url: string | null }> = {};
+    for (const u of usersData) {
+      userMap[u.id] = { display_name: u.display_name || 'Usuario', photo_url: u.photo_url || null };
+    }
+
+    const toFollowerInfo = (uid: string) => ({
+      voter_uid: uid,
+      display_name: userMap[uid]?.display_name || 'Usuario',
+      photo_url: userMap[uid]?.photo_url || null,
+    });
+
+    return {
+      seguidores: seguidoresUids.map(toFollowerInfo),
+      fans: fansUids.map(toFollowerInfo),
+    };
+  } catch (e) {
+    console.error('Error obteniendo seguidores/fans:', e);
+    return { seguidores: [], fans: [] };
+  }
+}

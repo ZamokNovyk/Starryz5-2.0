@@ -612,7 +612,7 @@ export default function PublicationCard({
           {/* Nombre, Sexo, Bandera, Badge de Calificación General y Fecha */}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h4 className="font-extrabold text-white text-sm sm:text-base tracking-tight truncate max-w-[180px] sm:max-w-[320px]">
+              <h4 className="font-extrabold text-white text-sm sm:text-base tracking-tight break-words min-w-0">
                 {displayName}
               </h4>
 
