@@ -314,7 +314,7 @@ export default function UserPublicationsView({
           />
 
           {/* Fila inferior de botones: [Agregar Foto] y [Visibilidad] a la izquierda | [Publicar] a la derecha */}
-          <div className="flex items-center justify-between pt-1 gap-2 flex-wrap">
+          <div className="flex items-center justify-between pt-1 gap-2">
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
@@ -452,7 +452,7 @@ export default function UserPublicationsView({
               type="button"
               onClick={handleSubmit}
               disabled={isSubmitting || compressing || !selectedFile}
-              className="px-5 py-2 rounded-xl bg-[#facc15] hover:bg-yellow-400 active:scale-95 text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-5 py-2 rounded-xl bg-[#facc15] hover:bg-yellow-400 active:scale-95 text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 ml-auto"
             >
               {isSubmitting ? (
                 <>
