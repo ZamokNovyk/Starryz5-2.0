@@ -25,7 +25,8 @@ import {
   Heart,
   Globe,
   Flag,
-  ChevronDown
+  ChevronDown,
+  MoreHorizontal
 } from 'lucide-react';
 import { 
   UserPublication, 
@@ -114,6 +115,7 @@ export default function PublicationCard({
   // Estados de visibilidad / ocultar publicación (candado)
   const [visibility, setVisibility] = useState<string>(publication.estado_de_vista || 'todos');
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
 
   // Estado para reporte visual
@@ -594,25 +596,25 @@ export default function PublicationCard({
 
   return (
     <article className="bg-[#101116] border border-[#23242d] rounded-3xl p-4 sm:p-6 shadow-2xl transition-all duration-200 max-w-3xl mx-auto w-full space-y-4">
-      {/* HEADER DE LA PUBLICACIÓN */}
-      <div className="space-y-2">
-        {/* Fila 1: Avatar, Nombre de usuario al costado con Sexo y Bandera, y en la esquina derecha Reportar y Eliminar */}
-        <div className="flex items-center justify-between gap-3 min-w-0">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            {/* Avatar del usuario */}
-            <div className="relative flex-shrink-0">
-              <img
-                src={avatarUrl}
-                alt={displayName}
-                className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover border border-[#3b3d4a] ring-2 ring-black shadow-md"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
-                }}
-              />
-            </div>
+      {/* HEADER DE LA PUBLICACIÓN ESTILO INSTAGRAM (MENU 3 PUNTOS) */}
+      <div className="flex items-center justify-between gap-3 min-w-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {/* Avatar del usuario con borde fino */}
+          <div className="relative flex-shrink-0">
+            <img
+              src={avatarUrl}
+              alt={displayName}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover border border-[#3b3d4a] ring-2 ring-black shadow-md"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+              }}
+            />
+          </div>
 
-            {/* Nombre de usuario con icono de sexo y bandera justo a su costado */}
-            <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
+          {/* Información del usuario: Nombre completo + badges y tiempo en 2da línea */}
+          <div className="min-w-0 flex-1">
+            {/* Línea 1: Nombre de usuario completo horizontal + Sexo + Bandera */}
+            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
               <h4 className="font-extrabold text-white text-sm sm:text-base tracking-tight truncate min-w-0 leading-tight">
                 {displayName}
               </h4>
@@ -620,7 +622,7 @@ export default function PublicationCard({
               {/* Sexo (gender) */}
               {(isMale || isFemale) && (
                 <span
-                  className={`text-sm font-black leading-none select-none ${
+                  className={`text-xs font-black leading-none select-none ${
                     isMale ? 'text-blue-400' : 'text-pink-400'
                   }`}
                   title={isMale ? 'Hombre ♂' : 'Mujer ♀'}
@@ -639,119 +641,68 @@ export default function PublicationCard({
                 />
               )}
             </div>
-          </div>
 
-          {/* Esquina superior derecha: Botones de Reporte y Eliminar */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {/* Botón de Reporte (Icono visual para todos los usuarios) */}
-            <button
-              type="button"
-              onClick={handleReportPublication}
-              title="Reportar publicación"
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-            >
-              <Flag className="w-4 h-4" />
-            </button>
+            {/* Línea 2: Calificación de perfil + Tiempo publicado */}
+            <div className="flex items-center gap-2 mt-0.5 text-xs text-zinc-400 font-medium">
+              <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#252317] border border-[#524515] text-[10px] font-bold text-[#eab308]">
+                <Star className="w-2.5 h-2.5 fill-[#eab308] text-[#eab308]" />
+                <span>{profileScore}</span>
+                <span className="text-[9px] text-zinc-400 font-medium">(Perfil)</span>
+              </div>
 
-            {/* Botón de eliminar (visible para el dueño) */}
-            {isOwner && (
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={isDeleting}
-                title="Eliminar publicación"
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
+              <span>•</span>
+              <p className="truncate">{formatTimeAgo(publication.created_at)}</p>
+            </div>
           </div>
         </div>
 
-        {/* Fila 2: A la izquierda Badge de calificación perfil y tiempo publicado. A la derecha: Calificación de publicación y modo vista (candado) */}
-        <div className="flex items-center justify-between gap-2 flex-wrap pl-13 sm:pl-14">
-          {/* Lado izquierdo: Calificación de perfil + Tiempo de publicación (línea blanca) */}
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
-            {/* Badge de Calificación General en users: ★ 5.0 (Perfil) */}
-            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#252317] border border-[#524515] text-[11px] font-bold text-[#eab308]">
-              <Star className="w-3 h-3 fill-[#eab308] text-[#eab308]" />
-              <span>{profileScore}</span>
-              <span className="text-[10px] text-zinc-400 font-medium">(Perfil)</span>
-            </div>
-
-            {/* Tiempo en el que se publicó la foto (línea blanca señalada) */}
-            <p className="text-xs text-zinc-400 font-medium truncate">
-              {formatTimeAgo(publication.created_at)}
-            </p>
+        {/* Lado derecho: Calificación de publicación + Menú de 3 puntos (Estilo Instagram) */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Calificación promedio de la publicación */}
+          <div 
+            className="px-2.5 py-1 rounded-full bg-[#1e1c14] border border-[#4d3f10] text-[#facc15] text-[11px] sm:text-xs font-black tracking-wider flex items-center gap-1.5 shadow-sm select-none"
+            title="Promedio de estrellas de la publicación y total de votos"
+          >
+            <Star className="w-3.5 h-3.5 fill-[#facc15] text-[#facc15]" />
+            <span className="font-mono font-bold text-white text-xs">{publicationAvg}</span>
+            <span className="text-[11px] text-zinc-400 font-normal">({publicationVotesCount})</span>
           </div>
 
-          {/* Lado derecho: Calificación de publicación + Candado de visibilidad */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 ">
-            <div 
-              className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#1e1c14] border border-[#4d3f10] text-[#facc15] text-[11px] sm:text-xs font-black tracking-wider flex items-center gap-1.5 shadow-sm select-none"
-              title="Promedio de estrellas de la publicación y total de votos"
+          {/* Menú de opciones de 3 puntos (Instagram) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowOptionsMenu((prev) => !prev)}
+              title="Más opciones"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
             >
-              <Star className="w-3.5 h-3.5 fill-[#facc15] text-[#facc15]" />
-              <span className="font-mono font-bold text-white text-xs">{publicationAvg}</span>
-              <span className="text-[11px] text-zinc-400 font-normal">({publicationVotesCount})</span>
-            </div>
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
 
-            {/* Botón de Candado / Selector de Visibilidad (SOLO VISIBLE PARA EL DUEÑO) */}
-            {isOwner && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowVisibilityMenu((prev) => !prev)}
-                  disabled={updatingVisibility}
-                  title={`Visibilidad actual: ${
-                    visibility === 'solo_yo' ? 'Solo yo (Oculta)' :
-                    visibility === 'solo_seguidores' ? 'Solo seguidores' :
-                    visibility === 'solo_fans' ? 'Solo fans' : 'Todos (Pública)'
-                  }`}
-                  className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
-                    visibility === 'solo_yo'
-                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 hover:bg-amber-500/25'
-                      : visibility === 'solo_seguidores'
-                      ? 'bg-blue-500/15 border-blue-500/40 text-blue-400 hover:bg-blue-500/25'
-                      : visibility === 'solo_fans'
-                      ? 'bg-pink-500/15 border-pink-500/40 text-pink-400 hover:bg-pink-500/25'
-                      : 'bg-[#181920] border-zinc-700/60 text-zinc-400 hover:text-white hover:bg-zinc-800'
-                  }`}
-                >
-                  {updatingVisibility ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-                  ) : visibility === 'solo_yo' ? (
-                    <Lock className="w-4 h-4" />
-                  ) : visibility === 'solo_seguidores' ? (
-                    <Users className="w-4 h-4" />
-                  ) : visibility === 'solo_fans' ? (
-                    <Heart className="w-4 h-4" />
-                  ) : (
-                    <Unlock className="w-4 h-4" />
-                  )}
-                  <ChevronDown className="w-3 h-3 opacity-60" />
-                </button>
-
-                {/* Menú desplegable con las 4 opciones: Todos, Solo yo, Solo seguidores, Solo fans */}
-                {showVisibilityMenu && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40" 
-                      onClick={() => setShowVisibilityMenu(false)} 
-                    />
-                    <div className="absolute right-0 top-full mt-1.5 w-48 bg-[#12131a] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-1">
-                      <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 border-b border-zinc-800/80">
-                        Estado de vista
+            {/* Dropdown del menú de opciones */}
+            {showOptionsMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setShowOptionsMenu(false)} 
+                />
+                <div className="absolute right-0 top-full mt-1.5 w-52 bg-[#12131a] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                  {/* Si es dueño: Opción de visibilidad / Modo vista */}
+                  {isOwner && (
+                    <div className="border-b border-zinc-800/80 pb-1 mb-1">
+                      <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                        Modo de vista
                       </div>
 
                       {/* 1. Todos */}
                       <button
                         type="button"
-                        onClick={() => handleChangeVisibility('todos')}
+                        onClick={() => {
+                          handleChangeVisibility('todos');
+                          setShowOptionsMenu(false);
+                        }}
                         className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                          visibility === 'todos'
-                            ? 'bg-zinc-800 text-white'
-                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                          visibility === 'todos' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
                         }`}
                       >
                         <span className="flex items-center gap-2">
@@ -764,11 +715,12 @@ export default function PublicationCard({
                       {/* 2. Solo yo */}
                       <button
                         type="button"
-                        onClick={() => handleChangeVisibility('solo_yo')}
+                        onClick={() => {
+                          handleChangeVisibility('solo_yo');
+                          setShowOptionsMenu(false);
+                        }}
                         className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                          visibility === 'solo_yo'
-                            ? 'bg-amber-500/20 text-amber-300'
-                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                          visibility === 'solo_yo' ? 'bg-amber-500/20 text-amber-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
                         }`}
                       >
                         <span className="flex items-center gap-2">
@@ -781,11 +733,12 @@ export default function PublicationCard({
                       {/* 3. Solo seguidores */}
                       <button
                         type="button"
-                        onClick={() => handleChangeVisibility('solo_seguidores')}
+                        onClick={() => {
+                          handleChangeVisibility('solo_seguidores');
+                          setShowOptionsMenu(false);
+                        }}
                         className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                          visibility === 'solo_seguidores'
-                            ? 'bg-blue-500/20 text-blue-300'
-                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                          visibility === 'solo_seguidores' ? 'bg-blue-500/20 text-blue-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
                         }`}
                       >
                         <span className="flex items-center gap-2">
@@ -798,11 +751,12 @@ export default function PublicationCard({
                       {/* 4. Solo fans */}
                       <button
                         type="button"
-                        onClick={() => handleChangeVisibility('solo_fans')}
+                        onClick={() => {
+                          handleChangeVisibility('solo_fans');
+                          setShowOptionsMenu(false);
+                        }}
                         className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                          visibility === 'solo_fans'
-                            ? 'bg-pink-500/20 text-pink-300'
-                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                          visibility === 'solo_fans' ? 'bg-pink-500/20 text-pink-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
                         }`}
                       >
                         <span className="flex items-center gap-2">
@@ -812,9 +766,38 @@ export default function PublicationCard({
                         {visibility === 'solo_fans' && <Check className="w-3.5 h-3.5 text-pink-400" />}
                       </button>
                     </div>
-                  </>
-                )}
-              </div>
+                  )}
+
+                  {/* Opción de Reportar */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowOptionsMenu(false);
+                      handleReportPublication();
+                    }}
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-zinc-300 hover:text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Flag className="w-4 h-4 text-zinc-400" />
+                    <span>Reportar publicación</span>
+                  </button>
+
+                  {/* Si es dueño: Opción de Eliminar */}
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOptionsMenu(false);
+                        handleDelete();
+                      }}
+                      disabled={isDeleting}
+                      className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-red-400 hover:bg-red-500/15 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-400" />
+                      <span>Eliminar publicación</span>
+                    </button>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
