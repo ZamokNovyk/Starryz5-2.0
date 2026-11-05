@@ -26,7 +26,7 @@ import {
   Globe,
   Flag,
   ChevronDown,
-  MoreHorizontal
+  MoreVertical
 } from 'lucide-react';
 import { 
   UserPublication, 
@@ -138,7 +138,7 @@ export default function PublicationCard({
     } catch {}
   };
 
-  // Formateo de fecha relativa amigable (ej: "Hace 2 horas")
+  // Formateo de fecha relativo y directo (ej: 5 min, 3 horas, ayer, 5 días, 1 semana, o fecha exacta si pasa de 7 días)
   const formatTimeAgo = (dateStr: string) => {
     try {
       if (!dateStr) return 'Reciente';
@@ -147,15 +147,18 @@ export default function PublicationCard({
       const now = new Date();
       const diffSecs = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-      if (diffSecs < 60) return 'Hace un momento';
+      if (diffSecs < 60) return 'Ahora';
       const diffMins = Math.floor(diffSecs / 60);
-      if (diffMins < 60) return `Hace ${diffMins} min`;
+      if (diffMins < 60) return `${diffMins} min`;
       const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `Hace ${diffHours} ${diffHours === 1 ? 'hora' : 'horas'}`;
+      if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hora' : 'horas'}`;
       const diffDays = Math.floor(diffHours / 24);
       if (diffDays === 1) return 'Ayer';
-      if (diffDays < 7) return `Hace ${diffDays} días`;
-      return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+      if (diffDays < 7) return `${diffDays} días`;
+      if (diffDays === 7) return '1 semana';
+
+      // Si pasa de 7 días, mostrar la fecha exacta en la que se subió la publicación
+      return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
     } catch {
       return 'Reciente';
     }
@@ -596,11 +599,145 @@ export default function PublicationCard({
 
   return (
     <article className="bg-[#101116] border border-[#23242d] rounded-3xl p-4 sm:p-6 shadow-2xl transition-all duration-200 max-w-3xl mx-auto w-full space-y-4">
-      {/* HEADER DE LA PUBLICACIÓN ESTILO INSTAGRAM (MENU 3 PUNTOS) */}
-      <div className="flex items-center justify-between gap-3 min-w-0">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          {/* Avatar del usuario con borde fino */}
-          <div className="relative flex-shrink-0">
+      {/* HEADER DE LA PUBLICACIÓN REDISEÑADO */}
+      <div className="relative">
+        {/* Botón de 3 puntos vertical posicionado arriba a la derecha */}
+        <div className="absolute right-0 top-0 z-20">
+          <button
+            type="button"
+            onClick={() => setShowOptionsMenu((prev) => !prev)}
+            title="Más opciones"
+            className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+          >
+            <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+
+          {/* Dropdown del menú de opciones (Visibilidad, Reportar, Eliminar) */}
+          {showOptionsMenu && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setShowOptionsMenu(false)} 
+              />
+              <div className="absolute right-0 top-full mt-1 w-52 bg-[#12131a] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                {/* Si es dueño: Opción de visibilidad / Modo vista */}
+                {isOwner && (
+                  <div className="border-b border-zinc-800/80 pb-1 mb-1">
+                    <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                      Modo de vista
+                    </div>
+
+                    {/* 1. Todos */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleChangeVisibility('todos');
+                        setShowOptionsMenu(false);
+                      }}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                        visibility === 'todos' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Todos</span>
+                      </span>
+                      {visibility === 'todos' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                    </button>
+
+                    {/* 2. Solo yo */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleChangeVisibility('solo_yo');
+                        setShowOptionsMenu(false);
+                      }}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                        visibility === 'solo_yo' ? 'bg-amber-500/20 text-amber-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Solo yo (Ocultar)</span>
+                      </span>
+                      {visibility === 'solo_yo' && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                    </button>
+
+                    {/* 3. Solo seguidores */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleChangeVisibility('solo_seguidores');
+                        setShowOptionsMenu(false);
+                      }}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                        visibility === 'solo_seguidores' ? 'bg-blue-500/20 text-blue-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Users className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Solo seguidores</span>
+                      </span>
+                      {visibility === 'solo_seguidores' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                    </button>
+
+                    {/* 4. Solo fans */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleChangeVisibility('solo_fans');
+                        setShowOptionsMenu(false);
+                      }}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                        visibility === 'solo_fans' ? 'bg-pink-500/20 text-pink-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Heart className="w-3.5 h-3.5 text-pink-400" />
+                        <span>Solo fans</span>
+                      </span>
+                      {visibility === 'solo_fans' && <Check className="w-3.5 h-3.5 text-pink-400" />}
+                    </button>
+                  </div>
+                )}
+
+                {/* Opción de Reportar */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOptionsMenu(false);
+                    handleReportPublication();
+                  }}
+                  className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-zinc-300 hover:text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Flag className="w-4 h-4 text-zinc-400" />
+                  <span>Reportar publicación</span>
+                </button>
+
+                {/* Si es dueño: Opción de Eliminar */}
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowOptionsMenu(false);
+                      handleDelete();
+                    }}
+                    disabled={isDeleting}
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-red-400 hover:bg-red-500/15 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-400" />
+                    <span>Eliminar publicación</span>
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Contenedor de usuario: Avatar + Nombre Completo + Metadatos */}
+        <div className="flex items-start gap-3 pr-7 sm:pr-9 min-w-0">
+          {/* Avatar del usuario */}
+          <div className="relative flex-shrink-0 mt-0.5">
             <img
               src={avatarUrl}
               alt={displayName}
@@ -611,18 +748,18 @@ export default function PublicationCard({
             />
           </div>
 
-          {/* Información del usuario: Nombre completo + badges y tiempo en 2da línea */}
+          {/* Información del usuario con espacio completo para el nombre */}
           <div className="min-w-0 flex-1">
-            {/* Línea 1: Nombre de usuario completo horizontal + Sexo + Bandera */}
-            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-              <h4 className="font-extrabold text-white text-sm sm:text-base tracking-tight truncate min-w-0 leading-tight">
+            {/* Nombre completo: si es muy largo, se muestra completo y salta de línea naturalmente */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h4 className="font-extrabold text-white text-sm sm:text-base tracking-tight leading-snug break-words">
                 {displayName}
               </h4>
 
               {/* Sexo (gender) */}
               {(isMale || isFemale) && (
                 <span
-                  className={`text-xs font-black leading-none select-none ${
+                  className={`text-xs font-black leading-none select-none flex-shrink-0 ${
                     isMale ? 'text-blue-400' : 'text-pink-400'
                   }`}
                   title={isMale ? 'Hombre ♂' : 'Mujer ♀'}
@@ -642,8 +779,8 @@ export default function PublicationCard({
               )}
             </div>
 
-            {/* Línea 2: Calificación de perfil + Tiempo publicado */}
-            <div className="flex items-center gap-2 mt-0.5 text-xs text-zinc-400 font-medium">
+            {/* Metadatos: Calificación de perfil + Tiempo directo */}
+            <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400 font-medium flex-wrap">
               <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#252317] border border-[#524515] text-[10px] font-bold text-[#eab308]">
                 <Star className="w-2.5 h-2.5 fill-[#eab308] text-[#eab308]" />
                 <span>{profileScore}</span>
@@ -651,154 +788,8 @@ export default function PublicationCard({
               </div>
 
               <span>•</span>
-              <p className="truncate">{formatTimeAgo(publication.created_at)}</p>
+              <p className="text-zinc-400 font-medium">{formatTimeAgo(publication.created_at)}</p>
             </div>
-          </div>
-        </div>
-
-        {/* Lado derecho: Calificación de publicación + Menú de 3 puntos (Estilo Instagram) */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Calificación promedio de la publicación */}
-          <div 
-            className="px-2.5 py-1 rounded-full bg-[#1e1c14] border border-[#4d3f10] text-[#facc15] text-[11px] sm:text-xs font-black tracking-wider flex items-center gap-1.5 shadow-sm select-none"
-            title="Promedio de estrellas de la publicación y total de votos"
-          >
-            <Star className="w-3.5 h-3.5 fill-[#facc15] text-[#facc15]" />
-            <span className="font-mono font-bold text-white text-xs">{publicationAvg}</span>
-            <span className="text-[11px] text-zinc-400 font-normal">({publicationVotesCount})</span>
-          </div>
-
-          {/* Menú de opciones de 3 puntos (Instagram) */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowOptionsMenu((prev) => !prev)}
-              title="Más opciones"
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-            >
-              <MoreHorizontal className="w-5 h-5" />
-            </button>
-
-            {/* Dropdown del menú de opciones */}
-            {showOptionsMenu && (
-              <>
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setShowOptionsMenu(false)} 
-                />
-                <div className="absolute right-0 top-full mt-1.5 w-52 bg-[#12131a] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-1">
-                  {/* Si es dueño: Opción de visibilidad / Modo vista */}
-                  {isOwner && (
-                    <div className="border-b border-zinc-800/80 pb-1 mb-1">
-                      <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500">
-                        Modo de vista
-                      </div>
-
-                      {/* 1. Todos */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleChangeVisibility('todos');
-                          setShowOptionsMenu(false);
-                        }}
-                        className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                          visibility === 'todos' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Globe className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Todos</span>
-                        </span>
-                        {visibility === 'todos' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                      </button>
-
-                      {/* 2. Solo yo */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleChangeVisibility('solo_yo');
-                          setShowOptionsMenu(false);
-                        }}
-                        className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                          visibility === 'solo_yo' ? 'bg-amber-500/20 text-amber-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Lock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Solo yo (Ocultar)</span>
-                        </span>
-                        {visibility === 'solo_yo' && <Check className="w-3.5 h-3.5 text-amber-400" />}
-                      </button>
-
-                      {/* 3. Solo seguidores */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleChangeVisibility('solo_seguidores');
-                          setShowOptionsMenu(false);
-                        }}
-                        className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                          visibility === 'solo_seguidores' ? 'bg-blue-500/20 text-blue-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Users className="w-3.5 h-3.5 text-blue-400" />
-                          <span>Solo seguidores</span>
-                        </span>
-                        {visibility === 'solo_seguidores' && <Check className="w-3.5 h-3.5 text-blue-400" />}
-                      </button>
-
-                      {/* 4. Solo fans */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleChangeVisibility('solo_fans');
-                          setShowOptionsMenu(false);
-                        }}
-                        className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                          visibility === 'solo_fans' ? 'bg-pink-500/20 text-pink-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Heart className="w-3.5 h-3.5 text-pink-400" />
-                          <span>Solo fans</span>
-                        </span>
-                        {visibility === 'solo_fans' && <Check className="w-3.5 h-3.5 text-pink-400" />}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Opción de Reportar */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowOptionsMenu(false);
-                      handleReportPublication();
-                    }}
-                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-zinc-300 hover:text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <Flag className="w-4 h-4 text-zinc-400" />
-                    <span>Reportar publicación</span>
-                  </button>
-
-                  {/* Si es dueño: Opción de Eliminar */}
-                  {isOwner && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowOptionsMenu(false);
-                        handleDelete();
-                      }}
-                      disabled={isDeleting}
-                      className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-red-400 hover:bg-red-500/15 flex items-center gap-2 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-400" />
-                      <span>Eliminar publicación</span>
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
           </div>
         </div>
       </div>
@@ -851,6 +842,17 @@ export default function PublicationCard({
               </button>
             );
           })}
+        </div>
+
+        {/* Calificación general de la imagen / publicación (debajo de las estrellas grandes) */}
+        <div 
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#181922] border border-[#373948] text-[#facc15] text-xs font-extrabold tracking-wider shadow-sm select-none mt-1"
+          title="Calificación general de la publicación"
+        >
+          <Star className="w-3.5 h-3.5 fill-[#facc15] text-[#facc15]" />
+          <span className="font-mono text-white text-xs">{publicationAvg}</span>
+          <span className="text-[11px] text-zinc-400 font-normal">({publicationVotesCount} {publicationVotesCount === 1 ? 'voto' : 'votos'})</span>
+          <span className="text-[10px] text-zinc-500 font-medium border-l border-zinc-700/80 pl-1.5 ml-0.5">Publicación</span>
         </div>
 
         {ratingErrorMsg && (
