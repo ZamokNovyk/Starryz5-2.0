@@ -71,7 +71,7 @@ export async function createProfessor(data: CreateProfessorData, firebaseUid: st
   };
 
   const { data: inserted, error } = await supabase
-    .from('professors')
+    .from('isppu')
     .insert([insertPayload])
     .select()
     .single();
@@ -90,7 +90,7 @@ export async function createProfessor(data: CreateProfessorData, firebaseUid: st
 export async function getProfessorById(slug: string): Promise<Professor | null> {
   try {
     const { data, error } = await supabase
-      .from('professors')
+      .from('isppu')
       .select('*')
       .eq('id', slug.toLowerCase().trim())
       .maybeSingle();
@@ -163,9 +163,10 @@ export async function getProfessorsByInstitute(instituteId: string): Promise<Pro
     const idList = Array.from(instIdsToQuery);
 
     const { data: profs, error } = await supabase
-      .from('professors')
+      .from('isppu')
       .select('*')
-      .in('institute_id', idList);
+      .in('institute_id', idList)
+      .eq('tipo', 'profesor');
 
     if (error) {
       if (error.code === 'P0001' || error.message?.includes('does not exist')) {
@@ -332,7 +333,7 @@ export async function incrementProfessorViews(professorId: string): Promise<numb
     // Si ya vio en esta sesión en este navegador, solo obtenemos el conteo real sin incrementar
     if (alreadyViewedInSession) {
       const { data: profData } = await supabase
-        .from('professors')
+        .from('isppu')
         .select('views_count')
         .eq('id', professorId)
         .maybeSingle();
@@ -360,7 +361,7 @@ export async function incrementProfessorViews(professorId: string): Promise<numb
 
     // 2. Fallback: Obtener conteo actual y actualizar de forma directa
     const { data: profData, error: fetchError } = await supabase
-      .from('professors')
+      .from('isppu')
       .select('views_count')
       .eq('id', professorId)
       .maybeSingle();
@@ -382,7 +383,7 @@ export async function incrementProfessorViews(professorId: string): Promise<numb
 
     // Actualizar en Supabase de forma directa
     await supabase
-      .from('professors')
+      .from('isppu')
       .update({ views_count: nextViews })
       .eq('id', professorId);
 
@@ -521,7 +522,7 @@ export async function updateProfessorWiki(
 ): Promise<{ success: boolean }> {
   try {
     const { error } = await supabase
-      .from('professors')
+      .from('isppu')
       .update({
         avatar_url: wikiData.avatar_url || null,
         height_cm: wikiData.height_cm,
@@ -554,7 +555,7 @@ export async function updateProfessorWiki(
 export async function getAllProfessors(): Promise<Professor[]> {
   try {
     const { data, error } = await supabase
-      .from('professors')
+      .from('isppu')
       .select('*')
       .order('created_at', { ascending: false });
 
@@ -810,7 +811,7 @@ export async function getUserInteractions(userUid: string): Promise<UserInteract
       try {
         const idsArray = Array.from(professorIds);
         const { data: profs, error: profsErr } = await supabase
-          .from('professors')
+          .from('isppu')
           .select('id, nombre, apellidos, nombre_completo, avatar_url, role')
           .in('id', idsArray);
 
@@ -1039,7 +1040,7 @@ export async function notifyProfessorSubscribers(params: {
     if (!displayName) {
       try {
         const { data: prof } = await supabase
-          .from('professors')
+          .from('isppu')
           .select('nombre, apellidos, nombre_completo')
           .eq('id', professorId)
           .maybeSingle();
@@ -1250,7 +1251,7 @@ export async function getUserProfessorSubscriptions(userUid: string): Promise<Us
 
     try {
       const { data: profs, error: profsErr } = await supabase
-        .from('professors')
+        .from('isppu')
         .select('id, nombre, apellidos, nombre_completo, avatar_url, role')
         .in('id', profsArray);
 

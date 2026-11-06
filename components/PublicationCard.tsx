@@ -852,7 +852,6 @@ export default function PublicationCard({
           <Star className="w-3.5 h-3.5 fill-[#facc15] text-[#facc15]" />
           <span className="font-mono text-white text-xs">{publicationAvg}</span>
           <span className="text-[11px] text-zinc-400 font-normal">({publicationVotesCount} {publicationVotesCount === 1 ? 'voto' : 'votos'})</span>
-          <span className="text-[10px] text-zinc-500 font-medium border-l border-zinc-700/80 pl-1.5 ml-0.5">Publicación</span>
         </div>
 
         {ratingErrorMsg && (

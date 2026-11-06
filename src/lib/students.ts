@@ -136,7 +136,7 @@ export async function createStudent(data: CreateStudentData, firebaseUid: string
 
   try {
     const { data: resData, error } = await supabase
-      .from('students')
+      .from('isppu')
       .insert([insertPayload])
       .select('*')
       .single();
@@ -166,7 +166,7 @@ export async function createStudent(data: CreateStudentData, firebaseUid: string
     if (cleanDni) fallbackPayload1.dni = cleanDni;
 
     const retry1 = await supabase
-      .from('students')
+      .from('isppu')
       .insert([fallbackPayload1])
       .select('*')
       .single();
@@ -180,7 +180,7 @@ export async function createStudent(data: CreateStudentData, firebaseUid: string
       delete fallbackPayload2.dni;
 
       const retry2 = await supabase
-        .from('students')
+        .from('isppu')
         .insert([fallbackPayload2])
         .select('*')
         .single();
@@ -221,7 +221,7 @@ export async function getStudentById(slugOrUid: string): Promise<Student | null>
   try {
     // 1. Buscar en la tabla students por su slug o ID original
     const { data, error } = await supabase
-      .from('students')
+      .from('isppu')
       .select('*')
       .eq('id', cleanSlug)
       .maybeSingle();
@@ -548,7 +548,7 @@ export async function claimStudentProfile(
     }
 
     // E. Eliminar el registro original de 'students' para que quede 100% absorbido por 'users'
-    await supabase.from('students').delete().eq('id', student.id);
+    await supabase.from('isppu').delete().eq('id', student.id);
   } catch (err) {
     console.error('Error al fusionar y eliminar estudiante reclamado en Supabase:', err);
   }
@@ -668,7 +668,7 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
 
     // Consultar en paralelo tanto la tabla 'students' como la tabla 'users' para recuperar todos los estudiantes del instituto
     const [studentsRes, usersRes] = await Promise.all([
-      supabase.from('students').select('*').in('institute_id', idList),
+      supabase.from('isppu').select('*').in('institute_id', idList).or('tipo.eq.estudiante,tipo.is.null'),
       supabase.from('users').select('*').in('institute_id', idList),
     ]);
 
@@ -986,7 +986,7 @@ export async function getStudentInteractionCounts(
     if (studentId) {
       try {
         const { data: s } = await supabase
-          .from('students')
+          .from('isppu')
           .select('id, fans_count, knows_count')
           .eq('id', studentId)
           .limit(1)
@@ -1032,7 +1032,7 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
     // Si ya vio en esta sesión en este navegador, solo obtenemos el conteo real sin incrementar
     if (alreadyViewedInSession) {
       const { data: studentData } = await supabase
-        .from('students')
+        .from('isppu')
         .select('views_count')
         .eq('id', studentId)
         .maybeSingle();
@@ -1060,7 +1060,7 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
 
     // 2. Fallback: Obtener conteo actual y actualizar de forma directa
     const { data: studentData, error: fetchError } = await supabase
-      .from('students')
+      .from('isppu')
       .select('views_count, knows_count, fans_count')
       .eq('id', studentId)
       .maybeSingle();
@@ -1082,7 +1082,7 @@ export async function incrementStudentViews(studentId: string): Promise<number> 
 
     // Actualizar en Supabase de forma directa
     await supabase
-      .from('students')
+      .from('isppu')
       .update({ views_count: nextViews })
       .eq('id', studentId);
 
@@ -1498,7 +1498,7 @@ export async function getStudentRatingBreakdown(
     if (rawIds.length > 0) {
       try {
         const { data: studentData } = await supabase
-          .from('students')
+          .from('isppu')
           .select('stars_1, stars_2, stars_3, stars_4, stars_5')
           .in('id', rawIds)
           .limit(1)
@@ -1683,7 +1683,7 @@ export async function submitStudentVote(
     // Actualizar tabla 'students'
     for (const sid of rawIds) {
       try {
-        await supabase.from('students').update(updatePayload).eq('id', sid);
+        await supabase.from('isppu').update(updatePayload).eq('id', sid);
       } catch (e) {}
     }
 
@@ -1726,7 +1726,7 @@ export async function getStudentCrushStatus(studentId: string, userUid: string):
 
     try {
       const { data: s } = await supabase
-        .from('students')
+        .from('isppu')
         .select('id, crushes_count')
         .eq('id', studentId)
         .limit(1)
@@ -1847,7 +1847,7 @@ export async function updateStudentWiki(
 ): Promise<{ success: boolean; data?: Student; error?: string }> {
   try {
     const { data: updated, error } = await supabase
-      .from('students')
+      .from('isppu')
       .update(data)
       .eq('id', studentId)
       .select()
@@ -2542,7 +2542,7 @@ export async function notifyStudentSubscribers(params: {
     if (!displayName) {
       try {
         const { data: st } = await supabase
-          .from('students')
+          .from('isppu')
           .select('nombre, apellidos, nombre_completo, created_by')
           .eq('id', studentId)
           .maybeSingle();
@@ -2769,7 +2769,7 @@ export async function getUserStudentSubscriptions(userUid: string): Promise<User
 
     try {
       const { data: students, error: stErr } = await supabase
-        .from('students')
+        .from('isppu')
         .select('id, nombre, apellidos, nombre_completo, avatar_url, carrera')
         .in('id', studentsArray);
 
