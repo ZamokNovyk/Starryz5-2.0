@@ -23,6 +23,8 @@ import EducationalCenterProfileView from '@/components/EducationalCenterProfileV
 import ProfessorProfile from '@/src/pages/ProfessorProfile';
 import StudentProfile from '@/src/pages/StudentProfile';
 import AdminDashboard from '@/src/components/AdminDashboard';
+import TermsOfServicePage from '@/src/pages/TermsOfServicePage';
+import PrivacyPolicyPage from '@/src/pages/PrivacyPolicyPage';
 import { useAuth } from '@/src/context/AuthContext';
 import { LayoutGrid, User, Bell, X, Wrench } from 'lucide-react';
 import { useFCMNotifications } from '@/hooks/useFCMNotifications';
@@ -461,6 +463,10 @@ export default function App() {
               </button>
             </div>
           )
+        ) : route.pathname === '/terminos-de-servicio' ? (
+          <TermsOfServicePage onBack={() => navigate('/')} />
+        ) : route.pathname === '/politica-de-privacidad' ? (
+          <PrivacyPolicyPage onBack={() => navigate('/')} />
         ) : route.pathname === '/admin' ? (
           <AdminDashboard 
             onBack={() => navigate('/')} 
@@ -600,6 +606,7 @@ export default function App() {
       <JoinModal
         isOpen={joinModalOpen}
         onClose={() => setJoinModalOpen(false)}
+        onNavigate={(url) => navigate(url)}
       />
 
       <ProfileModal

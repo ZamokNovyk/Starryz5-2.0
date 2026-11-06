@@ -7,15 +7,26 @@ import { useAuth } from '@/src/context/AuthContext';
 interface JoinModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onNavigate?: (url: string) => void;
 }
 
-export default function JoinModal({ isOpen, onClose }: JoinModalProps) {
+export default function JoinModal({ isOpen, onClose, onNavigate }: JoinModalProps) {
   const { user, loginWithGoogle, loginAnonymously, logout } = useAuth();
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [loadingAnon, setLoadingAnon] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleNavigate = (path: string) => {
+    onClose();
+    if (onNavigate) {
+      onNavigate(path);
+    } else {
+      window.history.pushState(null, '', path);
+      window.dispatchEvent(new Event('popstate'));
+    }
+  };
 
   const handleGoogleAuth = async () => {
     setErrorMsg(null);
@@ -50,7 +61,7 @@ export default function JoinModal({ isOpen, onClose }: JoinModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-[#0d0d0d] border border-[#eab308] rounded-2xl p-6 sm:p-8 shadow-[0_0_40px_rgba(234,179,8,0.2)] space-y-6 overflow-hidden">
+      <div className="relative w-full max-w-md bg-[#0d0d0d] border border-[#eab308]/60 rounded-2xl p-6 sm:p-8 shadow-[0_0_40px_rgba(234,179,8,0.2)] space-y-6 overflow-hidden">
         
         {/* Close Button */}
         <button
@@ -115,7 +126,7 @@ export default function JoinModal({ isOpen, onClose }: JoinModalProps) {
             </div>
           </div>
         ) : (
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 py-1">
             {/* Google Login */}
             <button
               type="button"
@@ -154,6 +165,29 @@ export default function JoinModal({ isOpen, onClose }: JoinModalProps) {
               <User className="w-5 h-5 text-[#eab308]" />
               <span>{loadingAnon ? 'INGRESANDO...' : 'ENTRAR COMO ANÓNIMO'}</span>
             </button>
+
+            {/* Texto de advertencia legal con enlaces a las páginas */}
+            <div className="pt-2 border-t border-zinc-800/80">
+              <p className="text-[11px] leading-relaxed text-zinc-400 text-center">
+                Al hacer clic en <strong className="text-zinc-200">Continuar con Google</strong>, autorizas la recolección de tu nombre de usuario y correo Gmail, y aceptas nuestros{' '}
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('/terminos-de-servicio')}
+                  className="text-[#eab308] hover:text-[#facc15] font-semibold underline underline-offset-2 transition-colors cursor-pointer inline"
+                >
+                  Términos de Servicio
+                </button>{' '}
+                y la{' '}
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('/politica-de-privacidad')}
+                  className="text-[#eab308] hover:text-[#facc15] font-semibold underline underline-offset-2 transition-colors cursor-pointer inline"
+                >
+                  Política de Privacidad
+                </button>
+                .
+              </p>
+            </div>
           </div>
         )}
       </div>

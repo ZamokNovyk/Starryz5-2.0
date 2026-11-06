@@ -2,7 +2,20 @@
 
 import React from 'react';
 
-export default function Footer() {
+interface FooterProps {
+  onNavigate?: (url: string) => void;
+}
+
+export default function Footer({ onNavigate }: FooterProps) {
+  const handleNav = (path: string) => {
+    if (onNavigate) {
+      onNavigate(path);
+    } else {
+      window.history.pushState(null, '', path);
+      window.dispatchEvent(new Event('popstate'));
+    }
+  };
+
   return (
     <footer className="bg-[#0d0d0d] border-t border-[#ffffff05] text-zinc-500 text-xs py-10 px-6 lg:px-8">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
@@ -20,6 +33,23 @@ export default function Footer() {
           </span>
         </div>
 
+        {/* Links legales */}
+        <div className="flex items-center gap-6 text-xs text-zinc-400">
+          <button
+            onClick={() => handleNav('/terminos-de-servicio')}
+            className="hover:text-[#eab308] transition-colors cursor-pointer"
+          >
+            Términos de Servicio
+          </button>
+          <span className="text-zinc-700">&bull;</span>
+          <button
+            onClick={() => handleNav('/politica-de-privacidad')}
+            className="hover:text-[#eab308] transition-colors cursor-pointer"
+          >
+            Política de Privacidad
+          </button>
+        </div>
+
         {/* Copyright */}
         <div className="text-zinc-600 text-[10px] font-mono tracking-widest uppercase">
           © {new Date().getFullYear()} STARRYZ 5. Todos los derechos reservados.
@@ -28,4 +58,3 @@ export default function Footer() {
     </footer>
   );
 }
-
