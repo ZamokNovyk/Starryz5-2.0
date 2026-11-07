@@ -33,6 +33,7 @@ export interface Student {
   facebook_url?: string;
   twitter_url?: string;
   biography?: string;
+  carrera?: string;
   dni?: string;
   is_claimed?: boolean;
   claimed_by_uid?: string;
@@ -707,6 +708,7 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
         is_claimed: Boolean(s.is_claimed || s.claimed_by_uid),
         claimed_by_uid: s.claimed_by_uid || null,
         created_by: s.created_by || 'institute',
+        carrera: s.carrera || null,
       };
     });
 
@@ -728,6 +730,7 @@ export async function getStudentsByInstitute(instituteId: string): Promise<Stude
         apellido_materno: u.apellido_materno || parts[2] || '',
         nombre_completo: fullName,
         institute_id: u.institute_id || rawInstId,
+        carrera: u.carrera || null,
         created_by: 'user',
         score: typeof u.score === 'number' ? Number(u.score) : 0.0,
         total_ratings: typeof u.total_ratings === 'number' ? u.total_ratings : 0,

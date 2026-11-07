@@ -6,7 +6,8 @@ import {
   Share2, 
   BookOpen, 
   Search, 
-  SlidersHorizontal, 
+  SlidersHorizontal,
+  ChevronDown, 
   List, 
   LayoutGrid, 
   Heart, 
@@ -122,6 +123,7 @@ interface MemberItem {
   is_claimed?: boolean;
   dni?: string;
   rawStudent?: DbStudent;
+  carrera?: string;
 }
 
 interface WikiArticle {
@@ -160,6 +162,9 @@ export default function EducationalCenterProfileView({
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortBy, setSortBy] = useState<SortOption>('alphabetical');
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
+  const [selectedCarrera, setSelectedCarrera] = useState<string>('all');
+  const [isCarreraMenuOpen, setIsCarreraMenuOpen] = useState(false);
+  const carreraMenuRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -664,6 +669,9 @@ export default function EducationalCenterProfileView({
       if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node)) {
         setIsSortMenuOpen(false);
       }
+      if (carreraMenuRef.current && !carreraMenuRef.current.contains(event.target as Node)) {
+        setIsCarreraMenuOpen(false);
+      }
       if (confessionSortMenuRef.current && !confessionSortMenuRef.current.contains(event.target as Node)) {
         setIsConfessionSortOpen(false);
       }
@@ -858,6 +866,7 @@ export default function EducationalCenterProfileView({
     role: 'Alumno',
     is_claimed: ds.is_claimed,
     dni: ds.dni,
+    carrera: (ds as any).carrera || undefined,
     rawStudent: ds,
   }));
 
@@ -879,10 +888,24 @@ export default function EducationalCenterProfileView({
     }
   }
 
-  // Filter list with searchTerm
-  const filteredMembers = uniqueMemberList.filter((p) =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Lista dinámica de carreras encontradas en la tabla
+  const availableCarreras = Array.from(
+    new Set(
+      mappedStudents
+        .map((s) => s.carrera?.trim())
+        .filter((c): c is string => Boolean(c && c.length > 0))
+    )
+  ).sort((a, b) => a.localeCompare(b, 'es'));
+
+  // Filter list with searchTerm y selectedCarrera
+  const filteredMembers = uniqueMemberList.filter((p) => {
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+    if (activeTab === 'Estudiantes' && selectedCarrera !== 'all') {
+      return (p.carrera || '').trim().toLowerCase() === selectedCarrera.trim().toLowerCase();
+    }
+    return true;
+  });
 
   // Filter confessions with searchTerm & 'my_confessions' filter
   const myConfessionIds = getMyConfessionIds();
@@ -1210,25 +1233,84 @@ export default function EducationalCenterProfileView({
       {/* CONTROLES DE ORDEN / VISTA (Lista, Mosaico y Menú Ordenar) */}
       {(activeTab === 'Profesores' || activeTab === 'Estudiantes') && (
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1 relative">
-          {/* Botón Crear perfil de Estudiante / Profesor (EXCLUSIVO ADMIN) */}
-          {isAdmin ? (
-            <button
-              type="button"
-              onClick={() => {
-                setAddMemberRole(activeTab === 'Estudiantes' ? 'Alumno' : 'Profesor');
-                setAddMemberOpen(true);
-              }}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#eab308] hover:bg-[#facc15] text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-[0_2px_15px_rgba(234,179,8,0.35)] hover:scale-105 active:scale-95 transition-all cursor-pointer border border-[#facc15]/50"
-              title={activeTab === 'Estudiantes' ? 'Crear perfil de estudiante (Exclusivo Admin)' : 'Crear perfil de profesor (Exclusivo Admin)'}
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>{activeTab === 'Estudiantes' ? 'Crear perfil de estudiante' : 'Crear perfil de profesor'}</span>
-            </button>
-          ) : (
-            <div />
+          {/* Espacio reservado sin botón estático duplicado (el botón flotante de la esquina inferior derecha permanece) */}
+          <div />
+
+          <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+          {/* Selector de Carrera (Solo en Estudiantes) */}
+          {activeTab === 'Estudiantes' && (
+            <div className="relative" ref={carreraMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsCarreraMenuOpen(!isCarreraMenuOpen)}
+                className={`flex items-center gap-1.5 px-3 py-2 bg-[#0d0d0d] border ${
+                  isCarreraMenuOpen || selectedCarrera !== 'all'
+                    ? 'border-[#eab308]/60 text-white'
+                    : 'border-zinc-800/80 text-zinc-400'
+                } rounded-xl text-xs font-bold uppercase tracking-wider hover:text-white hover:border-zinc-700 transition-all cursor-pointer shadow-sm`}
+                title="Carrera"
+              >
+                <GraduationCap className="w-4 h-4 text-[#eab308]" />
+                <span className="max-w-[110px] sm:max-w-[150px] truncate">
+                  {selectedCarrera === 'all' ? 'Carrera' : selectedCarrera}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
+              </button>
+
+              {/* Menú Desplegable de Carreras Dinámicas */}
+              {isCarreraMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-52 bg-[#0d0d0d] border border-zinc-800 rounded-2xl p-2 shadow-[0_10px_35px_rgba(0,0,0,0.85)] z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-3 py-1.5 text-[11px] font-black text-zinc-400 uppercase tracking-wider border-b border-zinc-800/80 mb-1">
+                    Carrera
+                  </div>
+                  <div className="max-h-60 overflow-y-auto space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCarrera('all');
+                        setIsCarreraMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-between cursor-pointer ${
+                        selectedCarrera === 'all'
+                          ? 'bg-[#1a1a1a] text-[#eab308] font-bold'
+                          : 'text-zinc-400 hover:bg-[#141414] hover:text-zinc-200'
+                      }`}
+                    >
+                      <span>Todas las carreras</span>
+                      {selectedCarrera === 'all' && <Check className="w-3.5 h-3.5 text-[#eab308]" />}
+                    </button>
+                    {availableCarreras.length === 0 && (
+                      <div className="px-3 py-2 text-[11px] text-zinc-500 italic">
+                        No hay carreras registradas aún
+                      </div>
+                    )}
+                    {availableCarreras.map((car) => {
+                      const isSelected = selectedCarrera.toLowerCase() === car.toLowerCase();
+                      return (
+                        <button
+                          key={car}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCarrera(car);
+                            setIsCarreraMenuOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#1a1a1a] text-[#eab308] font-bold'
+                              : 'text-zinc-400 hover:bg-[#141414] hover:text-zinc-200'
+                          }`}
+                        >
+                          <span className="truncate pr-2">{car}</span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-[#eab308] shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
-          <div className="flex items-center gap-3 ml-auto">
           {/* Toggle Lista / Mosaico */}
           <div className="flex items-center bg-[#0d0d0d] border border-zinc-800/80 rounded-xl p-1 shadow-sm">
             <button 
