@@ -20,7 +20,7 @@ export default function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
   return (
     <div className="min-h-screen bg-[#070709] text-zinc-300 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto space-y-8 bg-[#0e0f14] border border-[#23242d] rounded-3xl p-6 sm:p-10 shadow-2xl">
-        
+
         {/* Back Button */}
         <button
           onClick={handleBack}
@@ -58,7 +58,7 @@ export default function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
                 <strong className="text-zinc-200">Datos proporcionados por Google OAuth:</strong> Al hacer clic en <em className="text-white">"Continuar con Google"</em>, nos autorizas a recibir tu nombre de usuario público, correo electrónico (@gmail.com) y foto de perfil.
               </li>
               <li>
-                <strong className="text-zinc-200">Datos de Verificación Institucional:</strong> Al reclamar un perfil en el padrón, procesamos tu correo institucional (por ejemplo, <code className="text-[#eab308] bg-zinc-900 px-1.5 py-0.5 rounded">60036463@iesppuchiza.edu.pe</code>) únicamente para validar la autenticidad del estudiante mediante un código temporal OTP.
+                <strong className="text-zinc-200">Datos de Verificación Institucional:</strong> Al reclamar un perfil en el padrón, procesamos tu correo institucional (por ejemplo, <code className="text-[#eab308] bg-zinc-900 px-1.5 py-0.5 rounded">8765432@iesppuchiza.edu.pe</code>) únicamente para validar la autenticidad del estudiante mediante un código temporal OTP.
               </li>
               <li>
                 <strong className="text-zinc-200">Contenido Generado por el Usuario:</strong> Calificaciones en estrellas, publicaciones, comentarios, me gusta y confesiones anónimas.

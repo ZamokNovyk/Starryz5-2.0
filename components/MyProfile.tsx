@@ -174,7 +174,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
   // Estados para el perfil transformado tras reclamar perfil con DNI
   const [claimedStudent, setClaimedStudent] = useState<Student | null>(null);
-  const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'publicaciones' | 'reseñas' | 'crushes' | 'guardados'>('mis_datos');
+  const [claimedMainTab, setClaimedMainTab] = useState<'mis_datos' | 'publicaciones' | 'reseñas' | 'crushes' | 'guardados'>('publicaciones');
   const [claimedRatingBreakdown, setClaimedRatingBreakdown] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [claimedReviews, setClaimedReviews] = useState<StudentReviewItem[]>([]);
   const [claimedLoveMessages, setClaimedLoveMessages] = useState<StudentLoveMessage[]>([]);
@@ -1364,7 +1364,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       updateAuthUserProfile({
         displayName: cleanFullName,
         ...(isClaimedUser ? { institute_id: fixedInstituteId, profile_appeal: true } : {}),
-        dni: cleanDni || (dbUser as any)?.dni,
+        
       });
 
       setInitialDisplayName(cleanFullName);
@@ -1377,12 +1377,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         gender: selectedGender || null,
         country: selectedCountryName || null,
         country_code: selectedCountryCode || null,
-        dni: cleanDni || (dbUser as any)?.dni || null,
+        
         institute_id: isClaimedUser ? fixedInstituteId : (dbUser?.institute_id || null),
         profile_appeal: isClaimedUser,
       });
 
-      setSuccessMsg('¡Datos y DNI oficial guardados exitosamente en la base de datos!');
+      setSuccessMsg('¡Datos personales guardados exitosamente en la base de datos!');
       
       // Auto-ocultar el mensaje de éxito después de 4 segundos
       setTimeout(() => {
@@ -2466,50 +2466,31 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       </div>
                     </div>
 
-                    {/* DNI Oficial para Reclamo de Perfil */}
-                    <div className="sm:col-span-2 space-y-2 p-4 rounded-2xl bg-[#111111] border border-zinc-800/80">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
-                          <CreditCard className="w-3.5 h-3.5" /> DNI Oficial (8 Dígitos)
-                        </label>
-                        {isDniVerified ? (
+                    {/* Correo Institucional si tiene perfil verificado */}
+                    {dbUser?.institutional_email && (
+                      <div className="sm:col-span-2 space-y-2 p-4 rounded-2xl bg-[#111111] border border-emerald-500/30">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
+                            <Mail className="w-3.5 h-3.5 text-emerald-400" /> Correo Institucional Oficial
+                          </label>
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
                             <CheckCircle2 className="w-3 h-3" /> Verificado Oficial
                           </span>
-                        ) : (
-                          <span className="text-[10px] text-zinc-500 font-mono">
-                            8 dígitos numéricos
-                          </span>
-                        )}
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          maxLength={8}
-                          value={dniInput}
-                          onChange={(e) => setDniInput(e.target.value.replace(/\D/g, ''))}
-                          disabled={!isOwnProfile || isDniVerified || saving}
-                          placeholder="Ej. 60036463"
-                          className={`w-full rounded-xl px-4 py-3 text-sm font-mono tracking-widest outline-none transition-all ${
-                            isDniVerified
-                              ? 'bg-[#181818] border border-emerald-500/30 text-emerald-300 font-bold cursor-not-allowed'
-                              : isOwnProfile
-                                ? 'bg-[#151515] border border-[#ffffff15] text-white focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308]'
-                                : 'bg-[#121212] border border-[#ffffff0a] text-zinc-400 cursor-not-allowed'
-                          }`}
-                        />
-                        {isDniVerified ? (
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={dbUser.institutional_email}
+                            disabled
+                            className="w-full rounded-xl px-4 py-3 text-sm font-mono tracking-wider bg-[#181818] border border-emerald-500/30 text-emerald-300 font-bold cursor-not-allowed"
+                          />
                           <Lock className="w-4 h-4 text-emerald-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        ) : (
-                          <CreditCard className="w-4 h-4 text-zinc-600 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        )}
+                        </div>
+                        <p className="text-[11px] text-zinc-400">
+                          Tu perfil está certificado oficialmente mediante tu cuenta institucional.
+                        </p>
                       </div>
-                      <p className="text-[11px] text-zinc-400">
-                        {isDniVerified
-                          ? 'Tu DNI está certificado oficialmente con tu perfil de estudiante verificado y no puede ser modificado.'
-                          : 'Ingresa tu DNI oficial para que el sistema pueda verificar automáticamente tu identidad al reclamar un perfil institucional.'}
-                      </p>
-                    </div>
+                    )}
 
                     {/* Email (Solo se muestra a uno mismo) */}
                     {isOwnProfile && (

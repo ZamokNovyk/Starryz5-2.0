@@ -11,6 +11,7 @@ export interface IsppuMember {
   nombre_completo: string;
   institute_id: string;
   institutional_email?: string;
+  carrera?: string;
   tipo: 'estudiante' | 'profesor';
   created_by?: string;
   created_at?: string;
@@ -35,11 +36,12 @@ export interface CreateIsppuMemberData {
   apellido_paterno: string;
   apellido_materno?: string;
   institutional_email: string;
+  carrera?: string;
   tipo: 'estudiante' | 'profesor';
   instituteId: string;
 }
 
-function toSlug(first: string, last: string): string {
+export function toSlug(first: string, last: string): string {
   const combined = `${first.trim()} ${last.trim()}`;
   return combined
     .toLowerCase()
@@ -51,7 +53,7 @@ function toSlug(first: string, last: string): string {
 }
 
 /**
- * Inserta un nuevo miembro en la tabla 'isppu' (solo administradores).
+ * Inserta un nuevo miembro individual en la tabla 'isppu'.
  */
 export async function createIsppuMember(
   data: CreateIsppuMemberData,
@@ -75,6 +77,7 @@ export async function createIsppuMember(
     apellido_materno: apMaterno || null,
     nombre_completo: nombreCompleto,
     institutional_email: cleanEmail,
+    carrera: data.carrera?.trim() || null,
     tipo: data.tipo,
     institute_id: data.instituteId,
     created_by: firebaseUid,
@@ -92,6 +95,154 @@ export async function createIsppuMember(
   }
 
   return resData as IsppuMember;
+}
+
+/**
+ * Inserta decenas de miembros en lote en la tabla 'isppu'.
+ */
+export async function createBulkIsppuMembers(
+  membersList: CreateIsppuMemberData[],
+  firebaseUid: string
+): Promise<{ inserted: number; errors: string[] }> {
+  const payloads: any[] = [];
+  const errors: string[] = [];
+
+  for (const data of membersList) {
+    const nombresVal = data.nombres.trim();
+    const apPaterno = data.apellido_paterno.trim();
+    const apMaterno = (data.apellido_materno || '').trim();
+    const apellidosVal = `${apPaterno} ${apMaterno}`.trim();
+    const nombreCompleto = `${nombresVal} ${apellidosVal}`.trim();
+    const cleanEmail = data.institutional_email.trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      errors.push(`Correo inválido para ${nombreCompleto}`);
+      continue;
+    }
+
+    const slugId = toSlug(nombresVal, apellidosVal);
+
+    payloads.push({
+      id: slugId,
+      nombre: nombresVal,
+      apellidos: apellidosVal,
+      nombres: nombresVal,
+      apellido_paterno: apPaterno,
+      apellido_materno: apMaterno || null,
+      nombre_completo: nombreCompleto,
+      institutional_email: cleanEmail,
+      carrera: data.carrera?.trim() || null,
+      tipo: data.tipo,
+      institute_id: data.instituteId,
+      created_by: firebaseUid,
+      is_claimed: false,
+    });
+  }
+
+  if (payloads.length === 0) {
+    return { inserted: 0, errors };
+  }
+
+  // Insertar en lotes con upsert para evitar fallar todo si alguno ya existe
+  const { data: resData, error } = await supabase
+    .from('isppu')
+    .upsert(payloads, { onConflict: 'id' })
+    .select('*');
+
+  if (error) {
+    // Si falla por falta de columna 'carrera', intentar sin 'carrera'
+    if (error.message?.includes('carrera')) {
+      const fallbackPayloads = payloads.map(({ carrera, ...rest }) => rest);
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('isppu')
+        .upsert(fallbackPayloads, { onConflict: 'id' })
+        .select('*');
+      
+      if (fallbackError) {
+        throw new Error(fallbackError.message || 'Error al guardar miembros masivos.');
+      }
+      return { inserted: fallbackData?.length || payloads.length, errors };
+    }
+    throw new Error(error.message || 'Error al guardar miembros en lote en ISPPU.');
+  }
+
+  return {
+    inserted: resData?.length || payloads.length,
+    errors,
+  };
+}
+
+/**
+ * Parsea una lista de texto en múltiples líneas separando:
+ * - Correo institucional (cualquier token con '@')
+ * - Apellido materno (última palabra del nombre)
+ * - Apellido paterno (penúltima palabra del nombre)
+ * - Nombres (todas las palabras iniciales)
+ */
+export function parseBulkMembersText(
+  rawText: string,
+  tipo: 'estudiante' | 'profesor',
+  carrera: string,
+  instituteId: string
+): { valid: CreateIsppuMemberData[]; invalid: string[] } {
+  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const valid: CreateIsppuMemberData[] = [];
+  const invalid: string[] = [];
+
+  for (const line of lines) {
+    const tokens = line.split(/\s+/).filter(Boolean);
+    if (tokens.length < 3) {
+      invalid.push(`Línea incompleta (muy pocas palabras): "${line}"`);
+      continue;
+    }
+
+    // 1. Encontrar el token que contiene el correo
+    const emailIndex = tokens.findIndex(t => t.includes('@'));
+    if (emailIndex === -1) {
+      invalid.push(`Sin correo encontrado: "${line}"`);
+      continue;
+    }
+
+    const email = tokens[emailIndex].toLowerCase();
+    // Remover el correo de los tokens para procesar nombres y apellidos
+    const nameTokens = tokens.filter((_, idx) => idx !== emailIndex);
+
+    if (nameTokens.length < 2) {
+      invalid.push(`Faltan nombres o apellidos: "${line}"`);
+      continue;
+    }
+
+    // 2. Extraer apellidos y nombres según la regla
+    let apellidoMaterno = '';
+    let apellidoPaterno = '';
+    let nombres = '';
+
+    if (nameTokens.length === 2) {
+      // Caso mínimo: Nombre + Apellido Paterno
+      nombres = nameTokens[0];
+      apellidoPaterno = nameTokens[1];
+    } else {
+      // 3 o más palabras:
+      // Última palabra: Apellido Materno
+      // Penúltima palabra: Apellido Paterno
+      // Palabras anteriores: Nombres
+      apellidoMaterno = nameTokens[nameTokens.length - 1];
+      apellidoPaterno = nameTokens[nameTokens.length - 2];
+      nombres = nameTokens.slice(0, nameTokens.length - 2).join(' ');
+    }
+
+    valid.push({
+      nombres,
+      apellido_paterno: apellidoPaterno,
+      apellido_materno: apellidoMaterno || undefined,
+      institutional_email: email,
+      carrera: tipo === 'estudiante' ? carrera.trim() : undefined,
+      tipo,
+      instituteId,
+    });
+  }
+
+  return { valid, invalid };
 }
 
 /**
@@ -302,4 +453,3 @@ export async function verifyAndClaimProfile(
     member: updatedMember as IsppuMember,
   };
 }
-
