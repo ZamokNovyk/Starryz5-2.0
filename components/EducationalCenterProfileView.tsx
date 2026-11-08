@@ -1,3 +1,4 @@
+import { useLanguage } from '@/src/context/LanguageContext';
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -1164,7 +1165,7 @@ export default function EducationalCenterProfileView({
             }`}
           >
             <BookOpen className="w-4 h-4 flex-shrink-0" />
-            <span className={activeTab === 'Wiki' ? 'inline' : 'hidden sm:inline'}>Wiki</span>
+            <span className={activeTab === 'Wiki' ? 'inline' : 'hidden sm:inline'}>{t('tabs.wiki', 'Wiki')}</span>
           </button>
 
           {/* TAB PROFESORES */}
@@ -1179,7 +1180,7 @@ export default function EducationalCenterProfileView({
             }`}
           >
             <Award className="w-4 h-4 flex-shrink-0" />
-            <span className={activeTab === 'Profesores' ? 'inline' : 'hidden sm:inline'}>Profesores</span>
+            <span className={activeTab === 'Profesores' ? 'inline' : 'hidden sm:inline'}>{t('tabs.professors', 'Profesores')}</span>
           </button>
 
           {/* TAB ESTUDIANTES */}
@@ -1194,7 +1195,7 @@ export default function EducationalCenterProfileView({
             }`}
           >
             <GraduationCap className="w-4 h-4 flex-shrink-0" />
-            <span className={activeTab === 'Estudiantes' ? 'inline' : 'hidden sm:inline'}>Estudiantes</span>
+            <span className={activeTab === 'Estudiantes' ? 'inline' : 'hidden sm:inline'}>{t('tabs.students', 'Estudiantes')}</span>
           </button>
 
           {/* TAB CONFESIONES */}
@@ -1209,7 +1210,7 @@ export default function EducationalCenterProfileView({
             }`}
           >
             <MessageSquare className="w-4 h-4 flex-shrink-0" />
-            <span className={activeTab === 'Confesiones' ? 'inline' : 'hidden sm:inline'}>Confesiones</span>
+            <span className={activeTab === 'Confesiones' ? 'inline' : 'hidden sm:inline'}>{t('tabs.confessions', 'Confesiones')}</span>
           </button>
 
           {/* TAB GALERIA */}
@@ -1224,7 +1225,7 @@ export default function EducationalCenterProfileView({
             }`}
           >
             <ImageIcon className="w-4 h-4 flex-shrink-0" />
-            <span className={activeTab === 'Galeria' ? 'inline' : 'hidden sm:inline'}>Galeria</span>
+            <span className={activeTab === 'Galeria' ? 'inline' : 'hidden sm:inline'}>{t('tabs.gallery', 'Galeria')}</span>
           </button>
 
         </div>
@@ -1420,7 +1421,7 @@ export default function EducationalCenterProfileView({
                       className="mt-2 inline-flex items-center gap-2 px-4 py-2.5 bg-[#eab308] hover:bg-[#facc15] text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-[0_2px_15px_rgba(234,179,8,0.35)] transition-all cursor-pointer"
                     >
                       <Plus className="w-4 h-4 stroke-[3]" />
-                      <span>{activeTab === 'Estudiantes' ? 'Crear perfil de estudiante' : 'Crear perfil de profesor'}</span>
+                      <span>{activeTab === 'Estudiantes' ? t('action.create_student_profile', 'Crear perfil de estudiante') : t('action.create_professor_profile', 'Crear perfil de profesor')}</span>
                     </button>
                   )}
                 </div>

@@ -16,6 +16,7 @@ import {
   Sun,
   Moon,
   Palette,
+  Globe,
   Bell,
   BellRing,
   Smartphone,
@@ -46,6 +47,7 @@ import { promptNotificationOnAction } from '@/src/lib/notificationHelper';
 import { usePwaTabs } from '@/src/context/PwaTabsContext';
 import { useThemeCustomizer } from '@/src/context/ThemeCustomizerContext';
 import { usePageTransition, TRANSITIONS_LIST } from '@/src/context/PageTransitionContext';
+import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from '@/src/context/LanguageContext';
 
 interface NotificationItem {
   id: string;
@@ -84,6 +86,7 @@ export default function Header({
   const [guidelinesModalOpen, setGuidelinesModalOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
+  const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme, setTheme } = useTheme();
   const { openThemeStudio } = useThemeCustomizer();
   const { activeTransition, setIsSettingsModalOpen } = usePageTransition();
@@ -646,7 +649,7 @@ export default function Header({
           <div className="hidden sm:flex flex-1 max-w-lg mx-2 lg:mx-6">
             <AutocompleteSearchBar
               value={searchQuery}
-              placeholder="Buscar usuarios por nombre..."
+              placeholder={t("header.search_placeholder", "Buscar usuarios por nombre...")}
               onSearch={handleSearchSubmit}
               onSelectSuggestion={handleSuggestionSelect}
             />
@@ -707,7 +710,7 @@ export default function Header({
                     <div className="flex items-center justify-between px-4 py-3.5 border-b border-zinc-800/80 bg-[#14151a] shrink-0">
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]" />
-                        <span className="text-xs font-black text-white uppercase tracking-wider">Notificaciones</span>
+                        <span className="text-xs font-black text-white uppercase tracking-wider">{t("notifications.title", "Notificaciones")}</span>
                         {unreadCount > 0 && (
                           <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold">
                             {unreadCount}
@@ -735,7 +738,7 @@ export default function Header({
                     <div className="overflow-y-auto divide-y divide-zinc-800/60 flex-1">
                       {notifications.length === 0 ? (
                         <div className="p-8 text-center text-zinc-500 text-xs">
-                          No tienes notificaciones nuevas
+                          {t('notifications.empty', 'No tienes notificaciones nuevas')}
                         </div>
                       ) : (
                         notifications.map((notif) => (
@@ -819,7 +822,7 @@ export default function Header({
                     <div className="flex items-center justify-between px-4 py-3.5 border-b border-zinc-800/80 bg-[#14151a]">
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]" />
-                        <span className="text-xs font-black text-white uppercase tracking-wider">Notificaciones</span>
+                        <span className="text-xs font-black text-white uppercase tracking-wider">{t("notifications.title", "Notificaciones")}</span>
                       </div>
                       {unreadCount > 0 && (
                         <button 
@@ -833,7 +836,7 @@ export default function Header({
                     <div className="max-h-80 overflow-y-auto divide-y divide-zinc-800/60">
                       {notifications.length === 0 ? (
                         <div className="p-8 text-center text-zinc-500 text-xs">
-                          No tienes notificaciones nuevas
+                          {t('notifications.empty', 'No tienes notificaciones nuevas')}
                         </div>
                       ) : (
                         notifications.map((notif) => (
@@ -923,7 +926,7 @@ export default function Header({
                         {/* Cabecera del Menú */}
                         <div className="px-3 py-2 border-b border-zinc-800/80 mb-1">
                           <div className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                            Ajustes
+                            {t('settings.title', 'Ajustes')}
                           </div>
                           <div className="text-xs font-bold text-white truncate">
                             {user.displayName || 'Mi Cuenta'}
@@ -934,7 +937,7 @@ export default function Header({
                          <div className="px-3 py-2 border-b border-zinc-800/80 mb-1 space-y-2">
                            <div className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
                              <Palette className="w-3.5 h-3.5 text-zinc-400" />
-                             <span>Tema</span>
+                             <span>{t('settings.theme', 'Tema')}</span>
                            </div>
                            <div className="grid grid-cols-3 gap-1">
                              <button
@@ -945,7 +948,7 @@ export default function Header({
                                    : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                                }`}
                              >
-                               ☀️ Día
+                               ☀️ {t('settings.theme_day', 'Día')}
                              </button>
                              <button
                                onClick={() => setTheme('night')}
@@ -955,7 +958,7 @@ export default function Header({
                                    : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                                }`}
                              >
-                               🌙 Noche
+                               🌙 {t('settings.theme_night', 'Noche')}
                              </button>
                              <button
                                onClick={() => setTheme('iesppu')}
@@ -967,6 +970,33 @@ export default function Header({
                              >
                                💙 IESPPU
                              </button>
+                           </div>
+                         </div>
+
+                         {/* SELECCIÓN DE IDIOMA */}
+                         <div className="px-3 py-2 border-b border-zinc-800/80 mb-1 space-y-1.5">
+                           <div className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center justify-between">
+                             <span className="flex items-center gap-1.5">
+                               <Globe className="w-3.5 h-3.5 text-[#eab308]" />
+                               <span>{t('settings.language')}</span>
+                             </span>
+                             <span className="text-[10px] text-zinc-400 font-bold">
+                               {SUPPORTED_LANGUAGES.find(l => l.code === language)?.flag} {language.toUpperCase()}
+                             </span>
+                           </div>
+                           <div className="relative">
+                             <select
+                               value={language}
+                               onChange={(e) => setLanguage(e.target.value as LanguageCode)}
+                               className="w-full bg-[#141414] border border-zinc-800 hover:border-[#eab308]/50 text-white text-xs font-bold rounded-xl px-3 py-2 outline-none transition-all cursor-pointer appearance-none"
+                             >
+                               {SUPPORTED_LANGUAGES.map((lang) => (
+                                 <option key={lang.code} value={lang.code} className="bg-[#111] text-white py-1">
+                                   {lang.flag} {lang.nativeName} ({lang.name})
+                                 </option>
+                               ))}
+                             </select>
+                             <ChevronDown className="w-3.5 h-3.5 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                            </div>
                          </div>
 
@@ -983,7 +1013,7 @@ export default function Header({
                            >
                              <div className="flex items-center gap-2.5">
                                <Palette className="w-4 h-4 text-amber-400 group-hover:rotate-12 transition-transform" />
-                               <span>Personalizar Colores</span>
+                               <span>{t('settings.customize_colors')}</span>
                              </div>
                              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-400 border border-amber-400/30 uppercase tracking-wider">
                                Estudio
@@ -1004,7 +1034,7 @@ export default function Header({
                            >
                              <div className="flex items-center gap-2.5">
                                <Sparkles className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
-                               <span>Transición de Página</span>
+                               <span>{t('settings.page_transition')}</span>
                              </div>
                              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-zinc-800 text-blue-300 border border-blue-500/30 flex items-center gap-1">
                                <span>{activeTransitionDef.emoji}</span>
@@ -1024,7 +1054,7 @@ export default function Header({
                              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-amber-400 hover:bg-zinc-800/60 transition-all cursor-pointer text-left group"
                            >
                              <ShieldCheck className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
-                             <span>Normas de la Comunidad</span>
+                             <span>{t('settings.community_guidelines')}</span>
                            </button>
                          </div>
 
@@ -1040,7 +1070,7 @@ export default function Header({
                            >
                              <div className="flex items-center gap-2.5">
                                <Smartphone className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
-                               <span>Modo PWA (Pestañas)</span>
+                               <span>{t('settings.pwa_mode')}</span>
                              </div>
                              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
                                isPwaMode ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-500'
@@ -1061,7 +1091,7 @@ export default function Header({
                                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[10px] font-black text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/25 hover:border-amber-500/40 transition-all cursor-pointer text-left shadow-[0_0_10px_rgba(234,179,8,0.05)] animate-pulse"
                              >
                                <BellRing className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
-                               <span>Activar Notificaciones</span>
+                               <span>{t('settings.enable_notifications')}</span>
                              </button>
                            </div>
                          )}
@@ -1076,7 +1106,7 @@ export default function Header({
                             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-950/30 transition-all cursor-pointer group text-left border-t border-zinc-800/60 mt-1"
                           >
                             <LogOut className="w-4 h-4 text-red-400 group-hover:-translate-x-0.5 transition-transform" />
-                            <span>Cerrar Sesión</span>
+                            <span>{t('settings.logout')}</span>
                           </button>
                         )}
 
@@ -1145,7 +1175,7 @@ export default function Header({
               <div className="flex items-center justify-between text-xs font-bold text-zinc-300">
                 <div className="flex items-center gap-2">
                   <Palette className="w-4 h-4 text-[#eab308]" />
-                  <span>Cambiar Tema</span>
+                  <span>{t('settings.change_theme', 'Cambiar Tema')}</span>
                 </div>
                 <span className="text-[10px] text-zinc-500 font-medium">3 Opciones</span>
               </div>
@@ -1161,7 +1191,7 @@ export default function Header({
                   }`}
                 >
                   <span className="text-sm">☀️</span>
-                  <span className="text-[10px]">Modo Día</span>
+                  <span className="text-[10px]">{t('settings.theme_day', 'Día')}</span>
                 </button>
 
                 <button
@@ -1174,7 +1204,7 @@ export default function Header({
                   }`}
                 >
                   <span className="text-sm">🌙</span>
-                  <span className="text-[10px]">Modo Noche</span>
+                  <span className="text-[10px]">{t('settings.theme_night', 'Noche')}</span>
                 </button>
 
                 <button
@@ -1192,6 +1222,33 @@ export default function Header({
               </div>
             </div>
 
+            {/* SELECCIÓN DE IDIOMA EN MÓVIL */}
+            <div className="p-3.5 rounded-2xl border border-zinc-800/80 bg-[#141414] space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-zinc-300">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-[#eab308]" />
+                  <span>{t('settings.language')}</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 font-bold">
+                  {SUPPORTED_LANGUAGES.find(l => l.code === language)?.flag} {language.toUpperCase()}
+                </span>
+              </div>
+              <div className="relative">
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value as LanguageCode)}
+                  className="w-full bg-zinc-900/90 border border-zinc-800 hover:border-[#eab308]/50 text-white text-xs font-bold rounded-xl px-3 py-2.5 outline-none transition-all cursor-pointer appearance-none"
+                >
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <option key={lang.code} value={lang.code} className="bg-[#111] text-white py-1">
+                      {lang.flag} {lang.nativeName} ({lang.name})
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+
             {/* PERSONALIZAR COLORES EN MÓVIL */}
             <button
               type="button"
@@ -1203,7 +1260,7 @@ export default function Header({
             >
               <div className="flex items-center gap-2.5">
                 <Palette className="w-4 h-4 text-amber-400" />
-                <span>Personalizar Colores</span>
+                <span>{t('settings.customize_colors')}</span>
               </div>
               <span className="text-[10px] text-amber-400 font-black bg-amber-400/10 px-2 py-0.5 rounded-md border border-amber-400/20 uppercase tracking-wider">
                 Estudio
@@ -1221,7 +1278,7 @@ export default function Header({
             >
               <div className="flex items-center gap-2.5">
                 <Sparkles className="w-4 h-4 text-blue-400" />
-                <span>Transición de Página</span>
+                <span>{t('settings.page_transition')}</span>
               </div>
               <span className="text-[10px] text-blue-300 font-black bg-zinc-800 px-2 py-0.5 rounded-md border border-blue-500/30 flex items-center gap-1">
                 <span>{activeTransitionDef.emoji}</span>
@@ -1239,7 +1296,7 @@ export default function Header({
               className="w-full py-3 px-4 rounded-xl border border-zinc-800 text-zinc-200 font-bold text-xs tracking-wider bg-[#141414] hover:bg-zinc-800/80 flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <ShieldCheck className="w-4 h-4 text-amber-400" />
-              <span>Normas de la Comunidad</span>
+              <span>{t('settings.community_guidelines')}</span>
             </button>
 
             {/* GESTOR DE PESTAÑAS EN MÓVIL (SI ES PWA) */}
@@ -1273,7 +1330,7 @@ export default function Header({
                 className="w-full py-3 px-4 rounded-xl border border-amber-500/30 text-amber-400 font-extrabold text-xs tracking-wider uppercase bg-amber-500/10 hover:bg-amber-500/15 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(234,179,8,0.05)] animate-pulse"
               >
                 <BellRing className="w-4 h-4 text-amber-400 animate-bounce" />
-                <span>Activar Notificaciones</span>
+                <span>{t('settings.enable_notifications')}</span>
               </button>
             )}
 
@@ -1299,7 +1356,7 @@ export default function Header({
                 className="w-full py-2.5 px-4 rounded-xl bg-[#eab308] text-black font-bold text-xs tracking-widest uppercase flex items-center justify-center gap-2 shadow-sm"
               >
                 <UserPlus className="w-4 h-4 text-black" />
-                <span>UNIRSE</span>
+                <span>{t('auth.join', 'UNIRSE')}</span>
               </button>
             )}
           </div>

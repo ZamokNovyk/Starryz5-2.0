@@ -1,3 +1,4 @@
+import { useLanguage } from '@/src/context/LanguageContext';
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -29,7 +30,7 @@ interface AutocompleteSearchBarProps {
 
 export default function AutocompleteSearchBar({
   value = '',
-  placeholder = 'Buscar usuarios por nombre...',
+  placeholder,
   autoFocus = false,
   className = '',
   inputClassName = '',
@@ -38,6 +39,8 @@ export default function AutocompleteSearchBar({
   onSelectSuggestion,
   onClose
 }: AutocompleteSearchBarProps) {
+  const { t } = useLanguage();
+  const effectivePlaceholder = placeholder || t('header.search_placeholder', 'Buscar usuarios por nombre...');
   const [query, setQuery] = useState(value);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -338,7 +341,7 @@ export default function AutocompleteSearchBar({
               if (query.trim()) setIsOpen(true);
             }}
             onKeyDown={handleKeyDown}
-            placeholder={isListening ? '🎙️ Escuchando... Habla ahora' : placeholder}
+            placeholder={isListening ? '🎙️ ' + t('search.listening', 'Escuchando... Habla ahora') : effectivePlaceholder}
             autoFocus={autoFocus}
             className="w-full bg-transparent text-white text-xs sm:text-sm placeholder:text-zinc-500 focus:outline-none font-medium pr-1"
           />
@@ -382,10 +385,10 @@ export default function AutocompleteSearchBar({
           <button
             type="submit"
             className="bg-[#eab308] hover:bg-[#d9a307] text-black px-3 py-1.5 rounded-full transition-all active:scale-95 flex-shrink-0 cursor-pointer shadow-sm flex items-center gap-1.5"
-            title="Buscar"
+            title={t('header.search', 'Buscar')}
           >
             <Search className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span className="hidden sm:inline uppercase tracking-wider text-[11px] font-extrabold">Buscar</span>
+            <span className="hidden sm:inline uppercase tracking-wider text-[11px] font-extrabold">{t('header.search', 'Buscar')}</span>
           </button>
         </div>
       </form>

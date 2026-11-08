@@ -5,6 +5,7 @@ import { Crown } from 'lucide-react';
 import AutocompleteSearchBar from './AutocompleteSearchBar';
 import { SearchSuggestion } from '@/src/lib/search';
 import { useTheme } from '@/src/context/ThemeContext';
+import { useLanguage } from '@/src/context/LanguageContext';
 
 interface HeroSectionProps {
   searchQuery: string;
@@ -22,6 +23,7 @@ export default function HeroSection({
   onNavigate,
 }: HeroSectionProps) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
 
   const handleSearch = (q: string) => {
     setSearchQuery(q);
@@ -52,13 +54,13 @@ export default function HeroSection({
       {/* MAIN TITLE (IMMERSIVE UI STYLE) */}
       <div className="relative z-10 text-center max-w-4xl mx-auto mb-8 select-none">
         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tighter text-center leading-tight mb-2">
-          MIDE TU{' '}
+          {t('hero.measure_your', 'MIDE TU')}{' '}
           <span className="relative inline-block text-[#eab308]">
-            POPULARIDAD
+            {t('hero.popularity', 'POPULARIDAD')}
             <span className="absolute left-0 bottom-1 w-full h-2 bg-[#eab30830] -rotate-1 rounded-full"></span>
           </span>{' '}
           <br className="hidden sm:block" />
-          EN EL CAMPUS
+          {t('hero.in_campus', 'EN EL CAMPUS')}
         </h1>
       </div>
 
@@ -66,7 +68,7 @@ export default function HeroSection({
       <div className="relative z-20 w-full max-w-2xl mx-auto mb-6">
         <AutocompleteSearchBar
           value={searchQuery}
-          placeholder="Buscar usuarios por nombre..."
+          placeholder={t('header.search_placeholder', 'Buscar usuarios por nombre...')}
           onSearch={handleSearch}
           onSelectSuggestion={handleSelectSuggestion}
           showLeftIcon={false}

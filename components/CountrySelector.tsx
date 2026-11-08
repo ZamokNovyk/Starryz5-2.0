@@ -1,3 +1,5 @@
+import { useLanguage } from '@/src/context/LanguageContext';
+import { COUNTRY_NAMES_EN } from '@/src/data/countriesEn';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, Globe, ChevronDown, Check, X } from 'lucide-react';
 import { COUNTRIES, Country, getFlagUrl, findCountry } from '@/src/data/countries';
@@ -13,12 +15,21 @@ export const CountrySelector: React.FC<CountrySelectorProps> = ({
   value,
   onChange,
   disabled = false,
-  label = 'País / Nacionalidad',
+  label,
 }) => {
+  const { language, t } = useLanguage();
+  const effectiveLabel = label || t('form.country_label', 'País / Nacionalidad');
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const getCountryDisplayName = (c: Country) => {
+    if (language === 'en' && COUNTRY_NAMES_EN[c.code]) {
+      return COUNTRY_NAMES_EN[c.code];
+    }
+    return c.name;
+  };
 
   const selectedCountry = useMemo(() => {
     return findCountry(value);
@@ -67,7 +78,7 @@ export const CountrySelector: React.FC<CountrySelectorProps> = ({
       {label && (
         <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center justify-between">
           <span className="flex items-center gap-1.5">
-            <Globe className="w-3.5 h-3.5 text-[#eab308]" /> {label}
+            <Globe className="w-3.5 h-3.5 text-[#eab308]" /> {effectiveLabel}
           </span>
           {selectedCountry && !disabled && (
             <button
@@ -75,7 +86,7 @@ export const CountrySelector: React.FC<CountrySelectorProps> = ({
               onClick={handleClear}
               className="text-[9px] font-bold text-zinc-500 hover:text-red-400 transition cursor-pointer lowercase"
             >
-              quitar país
+              {t('form.remove_country', 'quitar país')}
             </button>
           )}
         </label>
@@ -100,12 +111,12 @@ export const CountrySelector: React.FC<CountrySelectorProps> = ({
               <img
                 src={getFlagUrl(selectedCountry.code, 'w40')}
                 srcSet={`${getFlagUrl(selectedCountry.code, 'w80')} 2x`}
-                alt={`Bandera de ${selectedCountry.name}`}
+                alt={`Bandera de ${getCountryDisplayName(selectedCountry)}`}
                 className="w-6 h-4 object-cover rounded-xs border border-zinc-700/60 shadow-xs flex-shrink-0"
                 loading="eager"
               />
               <span className="font-bold text-white tracking-tight truncate">
-                {selectedCountry.name}
+                {getCountryDisplayName(selectedCountry)}
               </span>
               <span className="text-[10px] font-mono text-zinc-500 uppercase">
                 ({selectedCountry.code.toUpperCase()})
@@ -114,7 +125,7 @@ export const CountrySelector: React.FC<CountrySelectorProps> = ({
           ) : (
             <span className="text-zinc-500 flex items-center gap-2">
               <Globe className="w-4 h-4 text-zinc-600" />
-              Selecciona tu país de origen...
+              {t('form.select_country_placeholder', 'Selecciona tu país de origen...')}
             </span>
           )}
         </div>
@@ -151,7 +162,7 @@ export const CountrySelector: React.FC<CountrySelectorProps> = ({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar país... (ej. Perú, México, España)"
+                placeholder={t("form.search_country_placeholder", "Buscar país... (ej. Perú, México, España)")}
                 className="w-full bg-[#0d0d0d] border border-zinc-700/60 focus:border-[#eab308] rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-500 outline-none transition"
               />
               {search && (
@@ -190,11 +201,11 @@ export const CountrySelector: React.FC<CountrySelectorProps> = ({
                       <img
                         src={getFlagUrl(c.code, 'w40')}
                         srcSet={`${getFlagUrl(c.code, 'w80')} 2x`}
-                        alt={`Bandera de ${c.name}`}
+                        alt={`Bandera de ${getCountryDisplayName(c)}`}
                         className="w-5 h-3.5 object-cover rounded-xs border border-zinc-700/50 shadow-xs flex-shrink-0 group-hover:scale-105 transition-transform"
                         loading="lazy"
                       />
-                      <span className="truncate">{c.name}</span>
+                      <span className="truncate">{getCountryDisplayName(c)}</span>
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">

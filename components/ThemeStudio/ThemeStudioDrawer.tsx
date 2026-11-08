@@ -1,3 +1,4 @@
+import { useLanguage } from '@/src/context/LanguageContext';
 import React, { useState } from 'react';
 import { 
   Palette, 
@@ -35,6 +36,7 @@ const QUICK_PALETTE_SWATCHES = [
 ];
 
 export const ThemeStudioDrawer: React.FC = () => {
+  const { t } = useLanguage();
   const {
     isStudioOpen,
     closeThemeStudio,
@@ -132,14 +134,14 @@ export const ThemeStudioDrawer: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-black tracking-wide text-white uppercase">
-                  Estudio de Colores
+                  {t('studio.title', 'Estudio de Colores')}
                 </h2>
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-400/20 text-amber-400 border border-amber-400/40">
-                  En Vivo
+                  {t('studio.live', 'En Vivo')}
                 </span>
               </div>
               <p className="text-[11px] text-zinc-400">
-                Personaliza fondos, botones, letras y detalles
+                {t('studio.subtitle', 'Personaliza fondos, botones, letras y detalles')}
               </p>
             </div>
           </div>
@@ -224,7 +226,7 @@ export const ThemeStudioDrawer: React.FC = () => {
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>En Esta Página</span>
+            <span>{t('studio.tab_page', 'En Esta Página')}</span>
           </button>
 
           <button
@@ -237,7 +239,7 @@ export const ThemeStudioDrawer: React.FC = () => {
             }`}
           >
             <Wand2 className="w-3.5 h-3.5" />
-            <span>Varita Mágica</span>
+            <span>{t('studio.tab_wand', 'Varita Mágica')}</span>
           </button>
 
           <button
@@ -250,7 +252,7 @@ export const ThemeStudioDrawer: React.FC = () => {
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Paletas Pro</span>
+            <span>{t('studio.tab_presets', 'Paletas Pro')}</span>
           </button>
         </div>
 
@@ -260,14 +262,14 @@ export const ThemeStudioDrawer: React.FC = () => {
             <div className="flex items-center justify-between text-xs text-zinc-400">
               <span className="flex items-center gap-1.5">
                 <Info className="w-3.5 h-3.5 text-amber-400" />
-                Elementos detectados en la pantalla actual:
+                {t('studio.detected_elements', 'Elementos detectados en la pantalla actual:')}
               </span>
               <button
                 type="button"
                 onClick={refreshDetectedElements}
                 className="text-[11px] text-amber-400 hover:underline cursor-pointer"
               >
-                Escanear de nuevo
+                {t('studio.scan_again', 'Escanear de nuevo')}
               </button>
             </div>
 
@@ -275,8 +277,8 @@ export const ThemeStudioDrawer: React.FC = () => {
             <div className="space-y-3">
               {/* 1. Fondo General */}
               <ColorSettingCard
-                title="Fondo General de la App"
-                description="Color del lienzo de fondo principal"
+                title={t('studio.app_bg_title', 'Fondo General de la App')}
+                description={t('studio.app_bg_desc', 'Color del lienzo de fondo principal')}
                 currentColor={customTheme.pageBg}
                 onChange={(val) => updateGlobalColor('pageBg', val)}
                 onReset={() => updateGlobalColor('pageBg', '#0a0a0a')}
@@ -284,8 +286,8 @@ export const ThemeStudioDrawer: React.FC = () => {
 
               {/* 2. Barra de Navegación / Header */}
               <ColorSettingCard
-                title="Barra Superior (Cabecera)"
-                description="Fondo de la barra de menú superior"
+                title={t('studio.header_bg_title', 'Barra Superior (Cabecera)')}
+                description={t('studio.header_bg_desc', 'Fondo de la barra de menú superior')}
                 currentColor={customTheme.headerBg}
                 onChange={(val) => updateGlobalColor('headerBg', val)}
                 onReset={() => updateGlobalColor('headerBg', '#0e1318')}
@@ -293,8 +295,8 @@ export const ThemeStudioDrawer: React.FC = () => {
 
               {/* 3. Botones Principales y Acciones (Dorado) */}
               <ColorSettingCard
-                title="Botones Principales / Acentos"
-                description="Botones de acción (votar, registrar, interactuar)"
+                title={t('studio.buttons_title', 'Botones Principales / Acentos')}
+                description={t('studio.buttons_desc', 'Botones de acción (votar, registrar, interactuar)')}
                 currentColor={customTheme.primaryColor}
                 onChange={(val) => updateGlobalColor('primaryColor', val)}
                 onReset={() => updateGlobalColor('primaryColor', '#eab308')}
@@ -302,8 +304,8 @@ export const ThemeStudioDrawer: React.FC = () => {
 
               {/* 4. Letra de Botones Principales */}
               <ColorSettingCard
-                title="Letra de Botones Principales"
-                description="Color del texto dentro de los botones de acción"
+                title={t('studio.button_text_title', 'Letra de Botones Principales')}
+                description={t('studio.button_text_desc', 'Color del texto dentro de los botones de acción')}
                 currentColor={customTheme.primaryTextColor}
                 onChange={(val) => updateGlobalColor('primaryTextColor', val)}
                 onReset={() => updateGlobalColor('primaryTextColor', '#000000')}
@@ -311,8 +313,8 @@ export const ThemeStudioDrawer: React.FC = () => {
 
               {/* 5. Tarjetas y Módulos */}
               <ColorSettingCard
-                title="Fondo de Tarjetas y Cuadros"
-                description="Superficie de profesores, estudiantes y modales"
+                title={t('studio.cards_bg_title', 'Fondo de Tarjetas y Cuadros')}
+                description={t('studio.cards_bg_desc', 'Superficie de profesores, estudiantes y modales')}
                 currentColor={customTheme.cardBg}
                 onChange={(val) => updateGlobalColor('cardBg', val)}
                 onReset={() => updateGlobalColor('cardBg', '#141414')}
@@ -320,8 +322,8 @@ export const ThemeStudioDrawer: React.FC = () => {
 
               {/* 6. Títulos y Encabezados */}
               <ColorSettingCard
-                title="Títulos y Encabezados (H1, H2)"
-                description="Color de los títulos grandes de cada página"
+                title={t('studio.headings_title', 'Títulos y Encabezados (H1, H2)')}
+                description={t('studio.headings_desc', 'Color de los títulos grandes de cada página')}
                 currentColor={customTheme.headingColor}
                 onChange={(val) => updateGlobalColor('headingColor', val)}
                 onReset={() => updateGlobalColor('headingColor', '#ffffff')}
@@ -329,8 +331,8 @@ export const ThemeStudioDrawer: React.FC = () => {
 
               {/* 7. Texto Principal */}
               <ColorSettingCard
-                title="Texto Principal y Nombres"
-                description="Color del texto regular de lectura"
+                title={t('studio.body_text_title', 'Texto Principal y Nombres')}
+                description={t('studio.body_text_desc', 'Color del texto regular de lectura')}
                 currentColor={customTheme.textColor}
                 onChange={(val) => updateGlobalColor('textColor', val)}
                 onReset={() => updateGlobalColor('textColor', '#f4f4f5')}
@@ -358,10 +360,10 @@ export const ThemeStudioDrawer: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-sm font-black text-amber-300 uppercase tracking-wider">
-                  Varita Mágica de Selección
+                  {t('studio.wand_title', 'Varita Mágica de Selección')}
                 </h3>
                 <p className="text-xs text-zinc-300 mt-1">
-                  Toca cualquier botón, palabra, fondo o tarjeta en la pantalla para editar su color individualmente.
+                  {t('studio.wand_subtitle', 'Toca cualquier botón, palabra, fondo o tarjeta en la pantalla para editar su color individualmente.')}
                 </p>
               </div>
 
@@ -371,7 +373,7 @@ export const ThemeStudioDrawer: React.FC = () => {
                 className="w-full py-3 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(234,179,8,0.25)]"
               >
                 <MousePointerClick className="w-4 h-4" />
-                <span>Activar Selector al Toque</span>
+                <span>{t('studio.wand_activate_btn', 'Activar Selector al Toque')}</span>
               </button>
             </div>
 
@@ -509,7 +511,7 @@ export const ThemeStudioDrawer: React.FC = () => {
             ) : (
               <div className="p-6 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 text-center text-zinc-400 text-xs">
                 <MousePointerClick className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
-                <span>Ningún elemento seleccionado aún. Activa el selector y haz clic sobre el elemento deseado.</span>
+                <span>{t('studio.wand_empty_state', 'Ningún elemento seleccionado aún. Activa el selector y haz clic sobre el elemento deseado.')}</span>
               </div>
             )}
 
@@ -571,7 +573,7 @@ export const ThemeStudioDrawer: React.FC = () => {
         {activeTab === 'presets' && (
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             <p className="text-xs text-zinc-400 mb-2">
-              Elige una paleta diseñada profesionalmente para aplicarla con un solo toque:
+              {t('studio.presets_desc', 'Elige una paleta diseñada profesionalmente para aplicarla con un solo toque:')}
             </p>
 
             {THEME_PRESETS.map((preset) => (
@@ -580,7 +582,7 @@ export const ThemeStudioDrawer: React.FC = () => {
                 type="button"
                 onClick={() => {
                   applyPreset(preset.id);
-                  showToast(`¡Paleta "${preset.name}" aplicada!`);
+                  showToast(`¡Paleta "${t(`preset.${preset.id}.name`, preset.name)}" aplicada!`);
                 }}
                 className="w-full p-3.5 rounded-2xl bg-zinc-900/80 hover:bg-zinc-800/80 border border-zinc-800 hover:border-zinc-700 transition-all text-left group cursor-pointer flex items-center justify-between"
               >
@@ -593,10 +595,10 @@ export const ThemeStudioDrawer: React.FC = () => {
                   </span>
                   <div>
                     <h4 className="text-xs font-black text-white group-hover:text-amber-300 transition-colors">
-                      {preset.name}
+                      {t(`preset.${preset.id}.name`, preset.name)}
                     </h4>
                     <p className="text-[11px] text-zinc-400">
-                      {preset.description}
+                      {t(`preset.${preset.id}.desc`, preset.description)}
                     </p>
                   </div>
                 </div>
@@ -610,14 +612,14 @@ export const ThemeStudioDrawer: React.FC = () => {
         {/* Footer info & live status */}
         <div className="p-3 border-t border-zinc-800/80 bg-zinc-950/90 text-center flex items-center justify-between">
           <span className="text-[11px] text-zinc-400">
-            {hasCustomStyles ? '✓ Cambios activos y guardados' : 'Colores estándar de la app'}
+            {hasCustomStyles ? '✓ Cambios activos y guardados' : t('studio.default_colors', 'Colores estándar de la app')}
           </span>
           <button
             type="button"
             onClick={closeThemeStudio}
             className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-xs font-black uppercase tracking-wider cursor-pointer shadow-sm"
           >
-            Listo
+            {t('action.done', 'Listo')}
           </button>
         </div>
 

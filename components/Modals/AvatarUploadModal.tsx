@@ -1,3 +1,4 @@
+import { useLanguage } from '@/src/context/LanguageContext';
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -43,6 +44,7 @@ export default function AvatarUploadModal({
   currentPhotoUrl,
   onAvatarUpdated
 }: AvatarUploadModalProps) {
+  const { t } = useLanguage();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
   
@@ -271,10 +273,10 @@ export default function AvatarUploadModal({
             </div>
             <div>
               <h3 className="text-base font-black text-white uppercase tracking-tight">
-                Foto de Perfil
+                {t('avatar.title', 'FOTO DE PERFIL')}
               </h3>
               <p className="text-xs text-zinc-400">
-                Ajusta el encuadre a tu gusto • Máx 5 MB (optimizado a 90 - 100 KB)
+                {t('avatar.subtitle', 'Ajusta el encuadre a tu gusto • Máx 5 MB (optimizado a 90 - 100 KB)')}
               </p>
             </div>
           </div>
@@ -319,18 +321,18 @@ export default function AvatarUploadModal({
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-bold text-white group-hover:text-[#eab308] transition-colors">
-                  Haz clic o arrastra tu foto aquí
+                  {t('avatar.drop_title', 'Haz clic o arrastra tu foto aquí')}
                 </p>
                 <p className="text-xs text-zinc-400">
-                  Formatos permitidos: JPG, PNG o WebP
+                  {t('avatar.formats', 'Formatos permitidos: JPG, PNG o WebP')}
                 </p>
               </div>
               <div className="flex items-center gap-2 pt-2">
                 <span className="text-[10px] font-mono px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 border border-zinc-700">
-                  Límite: 5.0 MB
+                  {t('avatar.limit', 'Límite: 5.0 MB')}
                 </span>
                 <span className="text-[10px] font-mono px-2.5 py-1 rounded-md bg-emerald-950/60 text-emerald-400 border border-emerald-600/30">
-                  Salida: 90 - 100 KB
+                  {t('avatar.output', 'Salida: 90 - 100 KB')}
                 </span>
               </div>
               <input
@@ -393,7 +395,7 @@ export default function AvatarUploadModal({
 
                   {/* Indicador de ayuda al arrastrar */}
                   <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-black/75 border border-zinc-700 text-[10px] text-zinc-300 font-medium flex items-center gap-1 opacity-80 pointer-events-none">
-                    <Move className="w-3 h-3 text-[#eab308]" /> Arrastra para mover
+                    <Move className="w-3 h-3 text-[#eab308]" /> {t('avatar.drag_to_move', 'Arrastra para mover')}
                   </div>
                 </div>
               </div>
@@ -531,7 +533,7 @@ export default function AvatarUploadModal({
                 className="w-full py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-900 border border-zinc-800 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                Elegir otra imagen
+                {t('avatar.choose_another', 'Elegir otra imagen')}
               </button>
             </div>
           )}

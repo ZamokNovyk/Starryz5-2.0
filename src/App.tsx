@@ -35,6 +35,7 @@ import { usePwaTabs, formatSlug, TabRichMeta } from '@/src/context/PwaTabsContex
 import PwaTabsSwitcherModal from '@/components/Modals/PwaTabsSwitcherModal';
 import ThemeStudioDrawer from '@/components/ThemeStudio/ThemeStudioDrawer';
 import { usePageTransition } from '@/src/context/PageTransitionContext';
+import { useLanguage } from '@/src/context/LanguageContext';
 import { PageTransitionOverlay } from '@/components/Transitions/PageTransitionOverlay';
 import { TransitionSettingsModal } from '@/components/Transitions/TransitionSettingsModal';
 
@@ -74,6 +75,7 @@ export default function App() {
   const { toastNotification, closeToast } = useFCMNotifications();
   const { syncCurrentRoute } = usePwaTabs();
   const { startTransition, activeTransition } = usePageTransition();
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [autoNavigateToProfile, setAutoNavigateToProfile] = useState(false);
 
@@ -565,7 +567,7 @@ export default function App() {
           }`}
         >
           <LayoutGrid className="w-4 h-4" />
-          <span>Home</span>
+          <span>{t('nav.home')}</span>
         </button>
 
         {userRole === 'admin' && (
@@ -578,7 +580,7 @@ export default function App() {
             }`}
           >
             <Wrench className="w-4 h-4" />
-            <span>Herramientas</span>
+            <span>{t('nav.tools')}</span>
           </button>
         )}
         
@@ -591,7 +593,7 @@ export default function App() {
           }`}
         >
           <User className="w-4 h-4" />
-          <span>Mi Perfil</span>
+          <span>{t('nav.my_profile')}</span>
         </button>
       </div>
 

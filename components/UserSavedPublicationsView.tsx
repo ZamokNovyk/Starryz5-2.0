@@ -1,3 +1,4 @@
+import { useLanguage } from '@/src/context/LanguageContext';
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -10,6 +11,7 @@ interface UserSavedPublicationsViewProps {
 }
 
 export default function UserSavedPublicationsView({ userUid }: UserSavedPublicationsViewProps) {
+  const { t } = useLanguage();
   const [savedPublications, setSavedPublications] = useState<UserPublication[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -43,7 +45,7 @@ export default function UserSavedPublicationsView({ userUid }: UserSavedPublicat
       <div className="py-16 text-center space-y-3">
         <Loader2 className="w-8 h-8 text-[#eab308] animate-spin mx-auto" />
         <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
-          Cargando tus publicaciones guardadas...
+          {t('saved.loading', 'Cargando tus publicaciones guardadas...')}
         </p>
       </div>
     );
@@ -57,10 +59,10 @@ export default function UserSavedPublicationsView({ userUid }: UserSavedPublicat
         </div>
         <div className="space-y-1.5">
           <h4 className="text-lg font-black text-white uppercase tracking-tight">
-            No tienes publicaciones guardadas
+            {t('saved.empty_title', 'No tienes publicaciones guardadas')}
           </h4>
           <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-            Cuando veas una foto o publicación que te guste en el campus, toca el ícono de marcador (guardar) y se guardará aquí en tu colección personal.
+            {t('saved.empty_desc', 'Cuando veas una foto o publicación que te guste en el campus, toca el ícono de marcador (guardar) y se guardará aquí en tu colección personal.')}
           </p>
         </div>
       </div>
@@ -73,11 +75,11 @@ export default function UserSavedPublicationsView({ userUid }: UserSavedPublicat
         <div className="flex items-center gap-2">
           <Bookmark className="w-5 h-5 text-amber-400 fill-amber-400" />
           <h3 className="text-base font-black text-white uppercase tracking-wider">
-            Tus Publicaciones Guardadas ({savedPublications.length})
+            {t('saved.title', 'TUS PUBLICACIONES GUARDADAS')} ({savedPublications.length})
           </h3>
         </div>
         <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
-          Colección privada
+          {t('saved.private_collection', 'COLECCIÓN PRIVADA')}
         </span>
       </div>
 

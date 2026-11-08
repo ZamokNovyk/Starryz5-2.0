@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, Sparkles, User, LogOut } from 'lucide-react';
 import { useAuth } from '@/src/context/AuthContext';
+import { useLanguage } from '@/src/context/LanguageContext';
 
 interface JoinModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface JoinModalProps {
 
 export default function JoinModal({ isOpen, onClose, onNavigate }: JoinModalProps) {
   const { user, loginWithGoogle, loginAnonymously, logout } = useAuth();
+  const { t } = useLanguage();
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [loadingAnon, setLoadingAnon] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -74,13 +76,13 @@ export default function JoinModal({ isOpen, onClose, onNavigate }: JoinModalProp
         {/* Header */}
         <div className="text-center sm:text-left pr-8">
           <span className="text-xs font-bold text-[#eab308] uppercase tracking-widest flex items-center justify-center sm:justify-start gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-[#eab308]" /> Acceso a STARRYZ 5
+            <Sparkles className="w-3.5 h-3.5 text-[#eab308]" /> {t("auth.access_title", "Acceso a STARRYZ 5")}
           </span>
           <h3 className="text-2xl font-black text-white uppercase tracking-tight mt-1">
-            INICIAR SESIÓN
+            {t("auth.login", "INICIAR SESIÓN")}
           </h3>
           <p className="text-xs text-zinc-400 mt-1">
-            Elige tu método preferido para ingresar y participar en la comunidad.
+            {t("auth.choose_method", "Elige tu método preferido para ingresar y participar en la comunidad.")}
           </p>
         </div>
 
@@ -112,7 +114,7 @@ export default function JoinModal({ isOpen, onClose, onNavigate }: JoinModalProp
                 onClick={onClose}
                 className="w-full py-3 rounded-lg bg-[#eab308] hover:bg-[#d9a307] text-black font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
               >
-                CONTINUAR AL SITIO
+                {t('auth.continue_to_site', 'CONTINUAR AL SITIO')}
               </button>
               {!user.isAnonymous && (
                 <button
@@ -152,7 +154,7 @@ export default function JoinModal({ isOpen, onClose, onNavigate }: JoinModalProp
                   d="M23.49 12.273c0-.818-.082-1.609-.227-2.364H12v4.51h6.445a5.51 5.51 0 0 1-2.39 3.618l3.873 3.227c2.264-2.09 3.564-5.173 3.564-8.99z"
                 />
               </svg>
-              <span>{loadingGoogle ? 'CONECTANDO...' : 'CONTINUAR CON GOOGLE'}</span>
+              <span>{loadingGoogle ? t('auth.connecting', 'CONECTANDO...') : t('auth.continue_google', 'CONTINUAR CON GOOGLE')}</span>
             </button>
 
             {/* Anonymous Login */}
@@ -163,27 +165,27 @@ export default function JoinModal({ isOpen, onClose, onNavigate }: JoinModalProp
               className="w-full py-3.5 px-4 rounded-xl border border-[#eab30840] bg-[#eab3080d] hover:bg-[#eab3081a] hover:border-[#eab30880] text-[#eab308] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-3 transition-all cursor-pointer shadow-md disabled:opacity-50"
             >
               <User className="w-5 h-5 text-[#eab308]" />
-              <span>{loadingAnon ? 'INGRESANDO...' : 'ENTRAR COMO ANÓNIMO'}</span>
+              <span>{loadingAnon ? t('auth.entering', 'INGRESANDO...') : t('auth.enter_anon', 'ENTRAR COMO ANÓNIMO')}</span>
             </button>
 
             {/* Texto de advertencia legal con enlaces a las páginas */}
             <div className="pt-2 border-t border-zinc-800/80">
               <p className="text-[11px] leading-relaxed text-zinc-400 text-center">
-                Al hacer clic en <strong className="text-zinc-200">Continuar con Google</strong>, autorizas la recolección de tu nombre de usuario y correo Gmail, y aceptas nuestros{' '}
+                {t('auth.legal_notice_start', 'Al hacer clic en')} <strong className="text-zinc-200">{t('auth.continue_google', 'Continuar con Google')}</strong>{t('auth.legal_notice_mid', ', autorizas la recolección de tu nombre de usuario y correo Gmail, y aceptas nuestros')}{' '}
                 <button
                   type="button"
                   onClick={() => handleNavigate('/terminos-de-servicio')}
                   className="text-[#eab308] hover:text-[#facc15] font-semibold underline underline-offset-2 transition-colors cursor-pointer inline"
                 >
-                  Términos de Servicio
+                  {t('auth.terms_link', 'Términos de Servicio')}
                 </button>{' '}
-                y la{' '}
+                {t('auth.and_the', 'y la')}{' '}
                 <button
                   type="button"
                   onClick={() => handleNavigate('/politica-de-privacidad')}
                   className="text-[#eab308] hover:text-[#facc15] font-semibold underline underline-offset-2 transition-colors cursor-pointer inline"
                 >
-                  Política de Privacidad
+                  {t('auth.privacy_link', 'Política de Privacidad')}
                 </button>
                 .
               </p>

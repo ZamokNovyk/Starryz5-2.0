@@ -1,3 +1,4 @@
+import { useLanguage } from '@/src/context/LanguageContext';
 import React from 'react';
 import { 
   X, 
@@ -17,6 +18,7 @@ import {
 } from '../../src/context/PageTransitionContext';
 
 export const TransitionSettingsModal: React.FC = () => {
+  const { t } = useLanguage();
   const { 
     isSettingsModalOpen, 
     setIsSettingsModalOpen, 
@@ -50,14 +52,14 @@ export const TransitionSettingsModal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-white tracking-wide">
-                  Estudio de Transiciones
+                  {t('transitions.studio_title', 'Estudio de Transiciones')}
                 </h3>
                 <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-wider">
-                  7 Efectos 3D
+                  {t('transitions.effects_badge', '7 Efectos 3D')}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Tu propia pantalla con tus colores forma el cuerpo de la animación al cambiar de página.
+                {t('transitions.studio_subtitle', 'Tu propia pantalla con tus colores forma el cuerpo de la animación al cambiar de página.')}
               </p>
             </div>
           </div>
@@ -76,7 +78,7 @@ export const TransitionSettingsModal: React.FC = () => {
           {/* Selector de Velocidad */}
           <div className="flex items-center gap-2">
             <Gauge className="w-4 h-4 text-blue-400" />
-            <span className="text-slate-300 font-bold">Velocidad:</span>
+            <span className="text-slate-300 font-bold">{t('transitions.speed', 'Velocidad:')}</span>
             <div className="flex bg-black/60 p-1 rounded-xl border border-slate-800 gap-1">
               {(['fast', 'normal', 'slow'] as TransitionSpeed[]).map((s) => (
                 <button
@@ -89,7 +91,7 @@ export const TransitionSettingsModal: React.FC = () => {
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  {s === 'fast' ? '⚡ Rápido' : s === 'normal' ? '🎯 Normal' : '🎬 Suave'}
+                  {s === 'fast' ? '⚡ ' + t('transitions.fast', 'Rápido') : s === 'normal' ? '🎯 ' + t('transitions.normal', 'Normal') : '🎬 ' + t('transitions.smooth', 'Suave')}
                 </button>
               ))}
             </div>
@@ -109,12 +111,12 @@ export const TransitionSettingsModal: React.FC = () => {
             {soundEnabled ? (
               <>
                 <Volume2 className="w-4 h-4 text-emerald-400" />
-                <span>Sonido Activado</span>
+                <span>{t('transitions.sound_enabled', 'Sonido Activado')}</span>
               </>
             ) : (
               <>
                 <VolumeX className="w-4 h-4 text-slate-500" />
-                <span>Silenciado</span>
+                <span>{t('transitions.muted', 'Silenciado')}</span>
               </>
             )}
           </button>
@@ -140,10 +142,10 @@ export const TransitionSettingsModal: React.FC = () => {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="text-sm font-bold text-white">
-                        {item.name}
+                        {t(`transition.${item.id}.name`, item.name)}
                       </h4>
                       <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-slate-800 text-blue-300 border border-blue-500/20">
-                        {item.badge}
+                        {t(`transition.${item.id}.badge`, item.badge)}
                       </span>
                       {isActive && (
                         <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
@@ -153,7 +155,7 @@ export const TransitionSettingsModal: React.FC = () => {
                       )}
                     </div>
                     <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                      {item.description}
+                      {t(`transition.${item.id}.desc`, item.description)}
                     </p>
                   </div>
                 </div>
@@ -169,7 +171,7 @@ export const TransitionSettingsModal: React.FC = () => {
                       title="Probar esta animación con tu pantalla actual ahora"
                     >
                       <Play className="w-3.5 h-3.5 text-blue-400 fill-blue-400" />
-                      <span>Probar</span>
+                      <span>{t('action.test', 'Probar')}</span>
                     </button>
                   )}
 
@@ -182,7 +184,7 @@ export const TransitionSettingsModal: React.FC = () => {
                         : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700'
                     }`}
                   >
-                    {isActive ? 'Seleccionada' : 'Elegir'}
+                    {isActive ? t('action.selected', 'Seleccionada') : t('action.choose', 'Elegir')}
                   </button>
                 </div>
               </div>
@@ -194,7 +196,7 @@ export const TransitionSettingsModal: React.FC = () => {
         <div className="px-5 py-3.5 bg-[#131926] border-t border-zinc-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <Sparkles className="w-4 h-4 text-blue-400" />
-            <span>Guarda automáticamente en tu navegador.</span>
+            <span>{t('transitions.auto_save', 'Guarda automáticamente en tu navegador.')}</span>
           </div>
 
           <button

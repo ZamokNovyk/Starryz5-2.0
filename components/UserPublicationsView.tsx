@@ -1,3 +1,4 @@
+import { useLanguage } from '@/src/context/LanguageContext';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, 
@@ -44,6 +45,7 @@ export default function UserPublicationsView({
   currentUserAvatarUrl,
   currentUserBadge = '👑 ELITE 4.5+',
 }: UserPublicationsViewProps) {
+  const { t } = useLanguage();
   const [publications, setPublications] = useState<UserPublication[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -238,7 +240,7 @@ export default function UserPublicationsView({
                   maxLength={500}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder={`¿Qué quieres publicar hoy${currentUserDisplayName ? `, ${currentUserDisplayName.split(' ')[0]}` : ''}? Comparte fotos, eventos o pensamientos...`}
+                  placeholder={`${t('post.placeholder_full', '¿Qué quieres publicar hoy')}${currentUserDisplayName ? `, ${currentUserDisplayName.split(' ')[0]}` : ''}? ${t('post.share_prompt', 'Comparte fotos, eventos o pensamientos...')}`}
                   className="w-full bg-transparent text-white text-xs sm:text-sm placeholder:text-zinc-500 outline-none resize-none leading-relaxed"
                 />
               </div>
@@ -323,7 +325,7 @@ export default function UserPublicationsView({
                 className="px-3.5 py-2 rounded-xl bg-[#171821] hover:bg-[#1f212d] border border-[#2d2f3d] text-zinc-300 hover:text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
               >
                 <ImageIcon className="w-4 h-4 text-emerald-400" />
-                <span>{selectedFile ? 'Cambiar Foto' : 'Agregar Foto'}</span>
+                <span>{selectedFile ? t('action.change_photo', 'Cambiar Foto') : t('action.add_photo', 'Agregar Foto')}</span>
               </button>
 
               {/* Selector de Candado / Visibilidad antes de publicar */}
@@ -355,7 +357,7 @@ export default function UserPublicationsView({
                   <span>
                     {visibilityState === 'solo_yo' ? 'Solo yo' :
                      visibilityState === 'solo_seguidores' ? 'Solo seguidores' :
-                     visibilityState === 'solo_fans' ? 'Solo fans' : 'Todos'}
+                     visibilityState === 'solo_fans' ? t('post.only_fans', 'Solo fans') : t('action.everyone', 'Todos')}
                   </span>
                   <ChevronDown className="w-3 h-3 opacity-60 ml-0.5" />
                 </button>
@@ -384,7 +386,7 @@ export default function UserPublicationsView({
                       >
                         <span className="flex items-center gap-2">
                           <Globe className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Todos</span>
+                          <span>{t('action.everyone', 'Todos')}</span>
                         </span>
                         {visibilityState === 'todos' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                       </button>
@@ -457,12 +459,12 @@ export default function UserPublicationsView({
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Publicando...</span>
+                  <span>{t('action.publishing', 'Publicando...')}</span>
                 </>
               ) : (
                 <>
                   <Zap className="w-3.5 h-3.5 fill-black" />
-                  <span>Publicar</span>
+                  <span>{t('action.publish', 'Publicar')}</span>
                 </>
               )}
             </button>

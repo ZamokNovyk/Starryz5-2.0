@@ -1,8 +1,9 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/context/AuthContext';
+import { useLanguage } from '@/src/context/LanguageContext';
 import { checkUsernameAvailable, updateAuthUserProfile } from '@/src/lib/auth';
 import { motion } from 'motion/react';
 import { 
@@ -138,12 +139,13 @@ interface MyProfileProps {
 
 export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfileProps) {
   const { user, linkWithGoogle } = useAuth();
+  const { t } = useLanguage();
   const [dbUser, setDbUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   
-  // 3 campos oficiales: Nombres, Apellido Paterno, Apellido Materno
+  // 3 campos oficiales: Nombres, Apellido Paterno, {t('form.maternal_surname', 'Apellido Materno')}
   const [nombresInput, setNombresInput] = useState('');
   const [apellidoPaternoInput, setApellidoPaternoInput] = useState('');
   const [apellidoMaternoInput, setApellidoMaternoInput] = useState('');
@@ -1490,7 +1492,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         className="inline-flex items-center gap-2 text-xs font-bold text-zinc-400 hover:text-[#eab308] transition-colors cursor-pointer group"
       >
         <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-        VOLVER A LA PÁGINA PRINCIPAL
+        {t('profile.back_home', 'VOLVER A LA PÁGINA PRINCIPAL')}
       </button>
 
       {/* TARJETA BANNER SUPERIOR DEL PERFIL (Diseño horizontal ancho idéntico al visual) */}
@@ -1587,7 +1589,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               {/* Perfil Verificado Badge idéntico a la imagen */}
               <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] sm:text-xs font-bold shadow-xs">
                 <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                <span>Perfil Verificado</span>
+                <span>{t('action.verified_profile', 'Perfil Verificado')}</span>
               </div>
 
               {/* Botón Cambiar Foto para el propio usuario */}
@@ -1599,7 +1601,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   title="Cambiar foto de perfil"
                 >
                   <Camera className="w-3 h-3 text-amber-400" />
-                  <span>Cambiar Foto</span>
+                  <span>{t('action.change_photo', 'Cambiar Foto')}</span>
                 </button>
               )}
             </div>
@@ -1615,7 +1617,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       maxLength={150}
                       value={descriptionInput}
                       onChange={(e) => setDescriptionInput(e.target.value.slice(0, 150))}
-                      placeholder="Escribe una descripción para tu perfil... (máx. 150 caracteres)"
+                      placeholder={t('profile.bio_placeholder', 'Escribe una descripción para tu perfil... (máx. 150 caracteres)')}
                       className="w-full max-w-xl bg-[#0c0d12] border border-zinc-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-white placeholder-zinc-500 outline-none resize-none leading-relaxed transition-colors"
                       autoFocus
                     />
@@ -1635,7 +1637,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       ) : (
                         <Check className="w-3.5 h-3.5" />
                       )}
-                      <span>Guardar</span>
+                      <span>{t('action.save', 'Guardar')}</span>
                     </button>
                     <button
                       type="button"
@@ -1687,7 +1689,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             {/* Miembro desde */}
             <div className="flex items-center justify-center sm:justify-start gap-1.5 text-zinc-500 text-xs font-medium">
               <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-              <span>Miembro desde {(() => {
+              <span>{t('profile.member_since', 'Miembro desde')} {(() => {
                 try {
                   const dateStr = dbUser?.created_at || (dbUser as any)?.registered_at;
                   if (dateStr) return new Date(dateStr).getFullYear();
@@ -1717,7 +1719,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             title={isSelfProfile ? 'Seguidores acumulados' : currentVote === 'yo_te_conozco' ? 'Dejar de seguir' : 'Seguir usuario'}
           >
             <span className="block text-[11px] font-black uppercase tracking-wider text-sky-400 mb-1">
-              {isSelfProfile ? 'SEGUIDORES' : currentVote === 'yo_te_conozco' ? 'SIGUIENDO' : 'SEGUIR'}
+              {isSelfProfile ? t('profile.followers', 'SEGUIDORES') : currentVote === 'yo_te_conozco' ? t('profile.following', 'SIGUIENDO') : t('profile.follow', 'SEGUIR')}
             </span>
             <span className="block text-2xl sm:text-3xl font-black text-white tracking-tight">
               {knowCount.toLocaleString()}
@@ -1740,7 +1742,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           >
             <span className="flex items-center justify-center gap-1 text-[11px] font-black uppercase tracking-wider text-pink-400 mb-1">
               <Heart className={`w-3.5 h-3.5 ${currentVote === 'fans' ? 'fill-pink-500 text-pink-500' : 'fill-pink-500/40'}`} />
-              <span>FANS</span>
+              <span>{t('profile.fans', 'FANS')}</span>
             </span>
             <span className="block text-2xl sm:text-3xl font-black text-white tracking-tight">
               {fanCount.toLocaleString()}
@@ -1787,7 +1789,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         >
           <div className="bg-[#0f0f12] border border-zinc-800 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-zinc-800/80">
-              <h3 className="text-white font-black text-base">Seguidores y Fans</h3>
+              <h3 className="text-white font-black text-base">{t('modal.followers_and_fans', 'Seguidores y Fans')}</h3>
               <button
                 type="button"
                 onClick={() => setShowFollowersModal(false)}
@@ -1802,14 +1804,14 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 onClick={() => setFollowersModalTab('seguidores')}
                 className={`flex-1 py-3 text-xs font-black uppercase tracking-wider transition-colors ${followersModalTab === 'seguidores' ? 'text-sky-400 border-b-2 border-sky-400' : 'text-zinc-500 hover:text-zinc-300'}`}
               >
-                Seguidores ({followersList.seguidores.length})
+                {t('profile.followers', 'Seguidores')} ({followersList.seguidores.length})
               </button>
               <button
                 type="button"
                 onClick={() => setFollowersModalTab('fans')}
                 className={`flex-1 py-3 text-xs font-black uppercase tracking-wider transition-colors ${followersModalTab === 'fans' ? 'text-pink-400 border-b-2 border-pink-400' : 'text-zinc-500 hover:text-zinc-300'}`}
               >
-                Fans ({followersList.fans.length})
+                {t('profile.fans', 'Fans')} ({followersList.fans.length})
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -1826,7 +1828,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   if (list.length === 0) {
                     return (
                       <p className="text-center text-zinc-500 text-sm py-8">
-                        {followersModalTab === 'seguidores' ? 'Aun no tienes seguidores.' : 'Aun no tienes fans.'}
+                        {followersModalTab === 'seguidores' ? t('modal.no_followers_yet', 'Aun no tienes seguidores.') : t('modal.no_fans_yet', 'Aun no tienes fans.')}
                       </p>
                     );
                   }
@@ -1863,7 +1865,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             }`}
           >
             <User className="w-4 h-4 flex-shrink-0" />
-            <span>{isOwnProfile ? 'Mis Datos' : 'Datos'}</span>
+            <span>{isOwnProfile ? t('profile.my_data', 'Mis Datos') : t('profile.data', 'Datos')}</span>
           </button>
 
           <button
@@ -1877,7 +1879,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             }`}
           >
             <Layers className="w-4 h-4 flex-shrink-0 text-current" />
-            <span>Publicaciones</span>
+            <span>{t('profile.publications', 'Publicaciones')}</span>
           </button>
 
           <button
@@ -1891,7 +1893,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             }`}
           >
             <Star className="w-4 h-4 flex-shrink-0 text-current" />
-            <span>Reseñas Recibidas</span>
+            <span>{t('profile.reviews_received', 'Reseñas Recibidas')}</span>
           </button>
 
           <button
@@ -1905,7 +1907,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             }`}
           >
             <Heart className="w-4 h-4 flex-shrink-0 text-current" />
-            <span>Crushes {crushesCount > 0 ? `(${crushesCount})` : ''}</span>
+            <span>{t('profile.crushes', 'Crushes')} {crushesCount > 0 ? `(${crushesCount})` : ''}</span>
           </button>
 
           {isOwnProfile && (
@@ -1920,7 +1922,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               }`}
             >
               <Bookmark className="w-4 h-4 flex-shrink-0 text-current" />
-              <span>Guardados</span>
+              <span>{t('profile.saved', 'Guardados')}</span>
             </button>
           )}
         </div>
@@ -1939,7 +1941,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               }`}
             >
               <UserCheck className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className={profileTab === 'info' ? 'inline' : 'hidden sm:inline'}>Información</span>
+              <span className={profileTab === 'info' ? 'inline' : 'hidden sm:inline'}>{t('profile.information', 'Información')}</span>
             </button>
 
             <button
@@ -1953,7 +1955,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               }`}
             >
               <Activity className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className={profileTab === 'interactions' ? 'inline' : 'hidden sm:inline'}>Mis Interacciones</span>
+              <span className={profileTab === 'interactions' ? 'inline' : 'hidden sm:inline'}>{t('profile.my_interactions', 'Mis Interacciones')}</span>
             </button>
 
             <button
@@ -1968,7 +1970,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             >
               <Bell className="w-3.5 h-3.5 flex-shrink-0" />
               <div className="relative flex items-center justify-center">
-                <span className={profileTab === 'subscriptions' ? 'inline' : 'hidden sm:inline'}>Suscripciones</span>
+                <span className={profileTab === 'subscriptions' ? 'inline' : 'hidden sm:inline'}>{t('profile.subscriptions', 'Suscripciones')}</span>
                 {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
                   <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
                     {profSubscriptions.length + studentSubscriptions.length}
@@ -1999,10 +2001,10 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   <div className="space-y-1">
                     <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
                       <Star className="w-5 h-5 text-[#eab308] fill-[#eab308]" />
-                      Resumen de Estrellas y Reputación
+                      {t('reviews.summary_title', 'RESUMEN DE ESTRELLAS Y REPUTACIÓN')}
                     </h3>
                     <p className="text-xs text-zinc-400">
-                      Calificaciones de la comunidad en la red social Starryz.
+                      {t('reviews.summary_subtitle', 'Calificaciones de la comunidad en la red social Starryz.')}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -2120,12 +2122,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400 space-y-1">
                   <p className="font-bold text-white flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4 text-[#eab308]" />
-                    Reputación en la Comunidad
+                    {t('reviews.community_reputation', 'Reputación en la Comunidad')}
                   </p>
                   <p>
                     {isSelfProfile
-                      ? 'Cualquier miembro de la comunidad puede calificar tu perfil con estrellas para fortalecer tu reputación.'
-                      : 'Tus estrellas otorgadas fortalecen la reputación de este usuario en la red social Starryz.'}
+                      ? t('reviews.reputation_own_desc', 'Cualquier miembro de la comunidad puede calificar tu perfil con estrellas para fortalecer tu reputación.')
+                      : t('reviews.reputation_other_desc', 'Tus estrellas otorgadas fortalecen la reputación de este usuario en la red social Starryz.')}
                   </p>
                 </div>
               </div>
@@ -2138,12 +2140,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   <div className="space-y-1">
                     <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
                       <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
-                      Flechazos y Mensajes de Amor
+                      {t('crushes.title', 'FLECHAZOS Y MENSAJES DE AMOR')}
                     </h3>
                     <p className="text-xs text-zinc-400">
                       {isSelfProfile 
-                        ? 'Personas que te han marcado como su crush de forma anónima.' 
-                        : 'Expresa tu admiración marcando a este usuario como tu crush.'}
+                        ? t('crushes.own_subtitle', 'Personas que te han marcado como su crush de forma anónima.') 
+                        : t('crushes.other_subtitle', 'Expresa tu admiración marcando a este usuario como tu crush.')}
                     </p>
                   </div>
                 </div>
@@ -2177,7 +2179,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       {crushesCount}
                     </div>
                     <p className="text-xs text-zinc-400 mt-1 uppercase font-bold tracking-wider">
-                      {crushesCount === 1 ? 'Persona le tiene como crush' : 'Personas le tienen como crush'}
+                      {crushesCount === 1 ? t('crushes.count_singular', 'PERSONA LE TIENE COMO CRUSH') : t('crushes.count_plural', 'PERSONAS LE TIENEN COMO CRUSH')}
                     </p>
                     {!isSelfProfile && (
                       <p className="text-[11px] text-pink-400/90 font-medium mt-1">
@@ -2367,7 +2369,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
                     <User className="w-5 h-5 text-[#eab308]" /> 
-                    {isOwnProfile ? 'Mis Datos Personales' : 'Información Personal'}
+                    {isOwnProfile ? t('form.personal_data', 'Mis Datos Personales') : t('form.personal_info', 'Información Personal')}
                   </h3>
                 </div>
               </div>
@@ -2398,11 +2400,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   {/* Grid Formulario */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     
-                    {/* 3 CAMPOS DE IDENTIDAD REAL: Nombres, Apellido Paterno, Apellido Materno */}
+                    {/* 3 CAMPOS DE IDENTIDAD REAL: Nombres, Apellido Paterno, {t('form.maternal_surname', 'Apellido Materno')} */}
                     <div className="sm:col-span-2 space-y-4">
                       <div className="flex items-center justify-between">
                         <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
-                          <User className="w-3.5 h-3.5" /> Identidad Oficial (Nombres y Apellidos)
+                          <User className="w-3.5 h-3.5" /> {t('form.official_identity', 'Identidad Oficial (Nombres y Apellidos)')}
                         </label>
                       </div>
 
@@ -2410,7 +2412,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                         {/* 1. NOMBRES */}
                         <div className="space-y-1.5">
                           <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                            Nombres <span className="text-red-400">*</span>
+                            {t('form.first_names', 'Nombres')} <span className="text-red-400">*</span>
                           </label>
                           <input
                             type="text"
@@ -2429,7 +2431,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                         {/* 2. APELLIDO PATERNO */}
                         <div className="space-y-1.5">
                           <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                            Apellido Paterno <span className="text-red-400">*</span>
+                            {t('form.paternal_surname', 'Apellido Paterno')} <span className="text-red-400">*</span>
                           </label>
                           <input
                             type="text"
@@ -2448,7 +2450,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                         {/* 3. APELLIDO MATERNO */}
                         <div className="space-y-1.5">
                           <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                            Apellido Materno
+                            {t('form.maternal_surname', 'Apellido Materno')}
                           </label>
                           <input
                             type="text"
@@ -2496,7 +2498,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     {isOwnProfile && (
                       <div className="space-y-2">
                         <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
-                          <Mail className="w-3.5 h-3.5" /> Correo Asociado
+                          <Mail className="w-3.5 h-3.5" /> {t('form.associated_email', 'Correo Asociado')}
                         </label>
                         <div className="relative">
                           <input
@@ -2522,7 +2524,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     </div>
                     <div className="space-y-2">
                       <label className="block text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5" /> Fecha de Registro
+                        <Calendar className="w-3.5 h-3.5" /> {t('form.registration_date', 'Fecha de Registro')}
                       </label>
                       <div className="relative">
                         <input
@@ -2541,7 +2543,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     {/* Sexo / Género */}
                     <div className="space-y-2">
                       <label className="block text-[10px] font-extrabold uppercase tracking-widest text-[#eab308] flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5" /> Sexo
+                        <Users className="w-3.5 h-3.5" /> {t('form.gender', 'Sexo')}
                       </label>
                       {isOwnProfile ? (
                         <div className="grid grid-cols-2 gap-2 h-[46px]">
@@ -2557,7 +2559,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                             title="Seleccionar Hombre ♂"
                           >
                             <span className="text-base font-black text-blue-400">♂</span>
-                            <span>Hombre</span>
+                            <span>{t('form.male', 'Hombre')}</span>
                           </button>
 
                           <button
@@ -2572,7 +2574,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                             title="Seleccionar Mujer ♀"
                           >
                             <span className="text-base font-black text-pink-400">♀</span>
-                            <span>Mujer</span>
+                            <span>{t('form.female', 'Mujer')}</span>
                           </button>
                         </div>
                       ) : (
@@ -2679,12 +2681,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                         {saving ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin text-current" />
-                            <span>GUARDANDO...</span>
+                            <span>{t('form.saving', 'GUARDANDO...')}</span>
                           </>
                         ) : (
                           <>
                             <Save className="w-4 h-4 text-current" />
-                            <span>GUARDAR CAMBIOS</span>
+                            <span>{t('form.save_changes', 'GUARDAR CAMBIOS')}</span>
                           </>
                         )}
                       </button>

@@ -1,3 +1,4 @@
+import { useLanguage } from '@/src/context/LanguageContext';
 import React from 'react';
 import { 
   ShieldCheck, 
@@ -18,6 +19,7 @@ export default function CommunityGuidelinesModal({
   isOpen,
   onClose
 }: CommunityGuidelinesModalProps) {
+  const { t } = useLanguage();
   if (!isOpen) return null;
 
   return (
@@ -34,10 +36,10 @@ export default function CommunityGuidelinesModal({
             </div>
             <div>
               <h2 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
-                Normas de la Comunidad
+                {t('guidelines.title', 'Normas de la Comunidad')}
               </h2>
               <p className="text-[11px] text-zinc-400 font-medium">
-                Reglas y principios de convivencia en Starryz 5
+                {t('guidelines.subtitle', 'Reglas y principios de convivencia en Starryz 5')}
               </p>
             </div>
           </div>
@@ -55,43 +57,43 @@ export default function CommunityGuidelinesModal({
         <div className="p-6 overflow-y-auto space-y-6 text-sm">
           {/* Mensaje de bienvenida / contexto */}
           <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 text-zinc-300 text-xs leading-relaxed">
-            <span className="font-bold text-amber-400 block mb-1">🌟 Compromiso con el respeto y la libertad</span>
-            Starryz 5 es un espacio universitario y estudiantil creado para calificar, opinar, confesar y conectar con total autenticidad. Para mantener una comunidad sana, segura y divertida, todos los miembros deben seguir estas pautas:
+            <span className="font-bold text-amber-400 block mb-1">{t('guidelines.commitment_title', '🌟 Compromiso con el respeto y la libertad')}</span>
+            {t('guidelines.commitment_desc', 'Starryz 5 es un espacio universitario y estudiantil creado para calificar, opinar, confesar y conectar con total autenticidad. Para mantener una comunidad sana, segura y divertida, todos los miembros deben seguir estas pautas:')}
           </div>
 
           {/* Sección: Lo que SÍ puedes hacer */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>Lo que SÍ puedes hacer (Permitido)</span>
+              <span>{t('guidelines.allowed_title', 'Lo que SÍ puedes hacer (Permitido)')}</span>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="p-3.5 rounded-xl bg-[#131418] border border-emerald-500/20 space-y-1">
-                <span className="font-bold text-white text-xs block">✅ Reseñas Constructivas</span>
+                <span className="font-bold text-white text-xs block">{t('guidelines.constructive_reviews_title', '✅ Reseñas Constructivas')}</span>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Evaluar metodologías de enseñanza, puntualidad, claridad y trato con respeto y sinceridad.
+                  {t('guidelines.constructive_reviews_desc', 'Evaluar metodologías de enseñanza, puntualidad, claridad y trato con respeto y sinceridad.')}
                 </p>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#131418] border border-emerald-500/20 space-y-1">
-                <span className="font-bold text-white text-xs block">✅ Confesiones con Respeto</span>
+                <span className="font-bold text-white text-xs block">{t('guidelines.respectful_confessions_title', '✅ Confesiones con Respeto')}</span>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Compartir anécdotas, historias divertidas o desahogos del campus sin difamar a terceros.
+                  {t('guidelines.respectful_confessions_desc', 'Compartir anécdotas, historias divertidas o desahogos del campus sin difamar a terceros.')}
                 </p>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#131418] border border-emerald-500/20 space-y-1">
-                <span className="font-bold text-white text-xs block">✅ Interacciones Sanas</span>
+                <span className="font-bold text-white text-xs block">{t('guidelines.healthy_interactions_title', '✅ Interacciones Sanas')}</span>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Dar Crushes, Fan y Seguir a tus profesores o compañeros como muestra de reconocimiento.
+                  {t('guidelines.healthy_interactions_desc', 'Dar Crushes, Fan y Seguir a tus profesores o compañeros como muestra de reconocimiento.')}
                 </p>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#131418] border border-emerald-500/20 space-y-1">
-                <span className="font-bold text-white text-xs block">✅ Guardar Privacidad</span>
+                <span className="font-bold text-white text-xs block">{t('guidelines.keep_privacy_title', '✅ Guardar Privacidad')}</span>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Puedes interactuar en anonimato para proteger tu identidad y expresarte sin presiones.
+                  {t('guidelines.keep_privacy_desc', 'Puedes interactuar en anonimato para proteger tu identidad y expresarte sin presiones.')}
                 </p>
               </div>
             </div>
@@ -101,35 +103,35 @@ export default function CommunityGuidelinesModal({
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
               <XCircle className="w-4 h-4 text-rose-400" />
-              <span>Lo que NO está permitido (Prohibido)</span>
+              <span>{t('guidelines.forbidden_title', 'Lo que NO está permitido (Prohibido)')}</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="p-3.5 rounded-xl bg-[#131418] border border-rose-500/20 space-y-1">
-                <span className="font-bold text-white text-xs block">❌ Acoso o Doxxing</span>
+                <span className="font-bold text-white text-xs block">{t('guidelines.harassment_title', '❌ Acoso o Doxxing')}</span>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Prohibido publicar números telefónicos, direcciones, documentos o datos personales privados.
+                  {t('guidelines.harassment_desc', 'Prohibido publicar números telefónicos, direcciones, documentos o datos personales privados.')}
                 </p>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#131418] border border-rose-500/20 space-y-1">
-                <span className="font-bold text-white text-xs block">❌ Insultos o Discurso de Odio</span>
+                <span className="font-bold text-white text-xs block">{t('guidelines.hate_speech_title', '❌ Insultos o Discurso de Odio')}</span>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Cero tolerancia a ataques por motivos de raza, género, religión, orientación sexual o discapacidad.
+                  {t('guidelines.hate_speech_desc', 'Cero tolerancia a ataques por motivos de raza, género, religión, orientación sexual o discapacidad.')}
                 </p>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#131418] border border-rose-500/20 space-y-1">
-                <span className="font-bold text-white text-xs block">❌ Spam o Publicidad No Autorizada</span>
+                <span className="font-bold text-white text-xs block">{t('guidelines.spam_title', '❌ Spam o Publicidad No Autorizada')}</span>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  No se permite la venta de exámenes, enlaces maliciosos, estafas ni promoción comercial masiva.
+                  {t('guidelines.spam_desc', 'No se permite la venta de exámenes, enlaces maliciosos, estafas ni promoción comercial masiva.')}
                 </p>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#131418] border border-rose-500/20 space-y-1">
-                <span className="font-bold text-white text-xs block">❌ Suplantación de Identidad</span>
+                <span className="font-bold text-white text-xs block">{t('guidelines.impersonation_title', '❌ Suplantación de Identidad')}</span>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Hacerse pasar maliciosamente por docentes, autoridades o compañeros está sancionado con baneo.
+                  {t('guidelines.impersonation_desc', 'Hacerse pasar maliciosamente por docentes, autoridades o compañeros está sancionado con baneo.')}
                 </p>
               </div>
             </div>
@@ -142,7 +144,7 @@ export default function CommunityGuidelinesModal({
               <span>Convivencia y Cuidado Mutuo</span>
             </div>
             <p className="text-[11px] text-zinc-400 leading-relaxed">
-              Starryz 5 es un proyecto independiente hecho con dedicación para la comunidad estudiantil. La plataforma se mantiene sana gracias a la colaboración de todos: si ves algún comentario irrespetuoso o que cruce la línea, repórtalo para poder retirarlo y mantener un espacio libre de toxicidad.
+              {t('guidelines.care_desc', 'Starryz 5 es un proyecto independiente hecho con dedicación para la comunidad estudiantil. La plataforma se mantiene sana gracias a la colaboración de todos: si ves algún comentario irrespetuoso o que cruce la línea, repórtalo para poder retirarlo y mantener un espacio libre de toxicidad.')}
             </p>
           </div>
         </div>
@@ -151,7 +153,7 @@ export default function CommunityGuidelinesModal({
         <div className="px-6 py-3.5 border-t border-zinc-800/80 bg-[#14151a] flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
             <Lock className="w-3.5 h-3.5 text-amber-500/60" />
-            <span>Comunidad Segura Starryz 5</span>
+            <span>{t('guidelines.safe_community', 'Comunidad Segura Starryz 5')}</span>
           </div>
 
           <button
