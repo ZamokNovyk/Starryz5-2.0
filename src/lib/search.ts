@@ -95,12 +95,15 @@ export async function searchWithAutocomplete(
   const seenIds = new Set<string>();
 
   try {
-    const { data: usersData, error: usersErr } = await supabase
-      .from('users')
-      .select('*');
+    // Consultar ambas tablas en paralelo
+    const [usersRes, isppuRes] = await Promise.all([
+      supabase.from('users').select('*'),
+      supabase.from('isppu').select('id,nombre,apellidos,nombres,apellido_paterno,apellido_materno,nombre_completo,tipo,carrera,avatar_url,is_claimed,claimed_by_uid'),
+    ]);
 
-    if (!usersErr && Array.isArray(usersData)) {
-      usersData.forEach((u: any) => {
+    // ── USUARIOS (tabla users) ──────────────────────────────────────────────
+    if (!usersRes.error && Array.isArray(usersRes.data)) {
+      usersRes.data.forEach((u: any) => {
         const fullStructured = [u.nombres, u.apellido_paterno, u.apellido_materno]
           .filter(Boolean)
           .join(' ')
@@ -113,7 +116,7 @@ export async function searchWithAutocomplete(
         const fullBlob = normalizeText(`${fullStructured} ${dispName} ${emailVal}`);
         const wordsInUser = fullBlob.split(/\s+/).filter(Boolean);
 
-        // 1. Comprobar si es Coincidencia Exacta o Subcadena Directa
+        // 1. Coincidencia Exacta o Subcadena Directa
         const isExactSubstring = fullBlob.includes(normQuery) || 
           (queryTokens.length > 0 && queryTokens.every(t => fullBlob.includes(t)));
 
@@ -140,7 +143,7 @@ export async function searchWithAutocomplete(
           return;
         }
 
-        // 2. Comprobar Coincidencia Difusa (Tolerancia a Errores de Ortografía)
+        // 2. Coincidencia Difusa
         if (queryTokens.length > 0) {
           let totalScore = 0;
           let matchedTokensCount = 0;
@@ -149,16 +152,10 @@ export async function searchWithAutocomplete(
           queryTokens.forEach(qToken => {
             let bestWord = '';
             let bestSim = 0;
-
             wordsInUser.forEach(uWord => {
               const sim = tokenSimilarity(qToken, uWord);
-              if (sim > bestSim) {
-                bestSim = sim;
-                bestWord = uWord;
-              }
+              if (sim > bestSim) { bestSim = sim; bestWord = uWord; }
             });
-
-            // Umbral de tolerancia a error (similitud >= 0.60 para palabras cortas/medianas)
             if (bestSim >= 0.60) {
               matchedTokensCount++;
               totalScore += bestSim;
@@ -166,15 +163,10 @@ export async function searchWithAutocomplete(
             }
           });
 
-          // Si todos o la gran mayoría de los tokens coinciden difusamente
           if (matchedTokensCount === queryTokens.length && matchedTokensCount > 0) {
             const avgSim = totalScore / queryTokens.length;
             if (!seenIds.has(uid)) {
               seenIds.add(uid);
-
-              // Sugerencia de corrección ortográfica "¿Quizás quisiste decir?"
-              const suggestedTerm = titleName;
-
               fuzzyResults.push({
                 id: uid,
                 title: titleName,
@@ -184,7 +176,89 @@ export async function searchWithAutocomplete(
                 url: `/perfil/${uid}`,
                 isFuzzy: true,
                 similarity: avgSim,
-                didYouMean: suggestedTerm
+                didYouMean: titleName
+              });
+            }
+          }
+        }
+      });
+    }
+
+    // ── ISPPU (padrón institucional) ────────────────────────────────────────
+    if (!isppuRes.error && Array.isArray(isppuRes.data)) {
+      isppuRes.data.forEach((m: any) => {
+        // Construir nombre completo con todas las variantes disponibles
+        const fullStructured = [m.nombres, m.apellido_paterno, m.apellido_materno]
+          .filter(Boolean).join(' ').trim();
+        const legacyFull = m.nombre_completo || `${m.nombre || ''} ${m.apellidos || ''}`.trim();
+        const titleName = fullStructured || legacyFull || m.nombre || 'Miembro';
+
+        const fullBlob = normalizeText(`${titleName} ${legacyFull}`);
+        const wordsInMember = fullBlob.split(/\s+/).filter(Boolean);
+
+        const isProfessor = m.tipo === 'profesor';
+        const memberType: SearchSuggestion['type'] = isProfessor ? 'professor' : 'student';
+        const subtitle = isProfessor
+          ? (m.carrera ? `Profesor • ${m.carrera}` : 'Profesor')
+          : (m.carrera ? `Estudiante • ${m.carrera}` : 'Estudiante');
+        const url = isProfessor ? `/profesores/${m.id}` : `/estudiantes/${m.id}`;
+        const memberId = `isppu-${m.id}`;
+
+        // Evitar duplicar si el usuario ya reclamó este perfil (ya aparece en users)
+        if (m.is_claimed && m.claimed_by_uid && seenIds.has(m.claimed_by_uid)) return;
+
+        // 1. Coincidencia exacta
+        const isExactSubstring = fullBlob.includes(normQuery) ||
+          (queryTokens.length > 0 && queryTokens.every(t => fullBlob.includes(t)));
+
+        if (isExactSubstring) {
+          if (!seenIds.has(memberId)) {
+            seenIds.add(memberId);
+            exactResults.push({
+              id: memberId,
+              title: titleName,
+              subtitle,
+              type: memberType,
+              avatarUrl: m.avatar_url || undefined,
+              url,
+              isFuzzy: false,
+              similarity: 1.0
+            });
+          }
+          return;
+        }
+
+        // 2. Coincidencia difusa
+        if (queryTokens.length > 0) {
+          let totalScore = 0;
+          let matchedTokensCount = 0;
+
+          queryTokens.forEach(qToken => {
+            let bestSim = 0;
+            wordsInMember.forEach(mWord => {
+              const sim = tokenSimilarity(qToken, mWord);
+              if (sim > bestSim) bestSim = sim;
+            });
+            if (bestSim >= 0.60) {
+              matchedTokensCount++;
+              totalScore += bestSim;
+            }
+          });
+
+          if (matchedTokensCount === queryTokens.length && matchedTokensCount > 0) {
+            const avgSim = totalScore / queryTokens.length;
+            if (!seenIds.has(memberId)) {
+              seenIds.add(memberId);
+              fuzzyResults.push({
+                id: memberId,
+                title: titleName,
+                subtitle: `${subtitle} (Coincidencia cercana)`,
+                type: memberType,
+                avatarUrl: m.avatar_url || undefined,
+                url,
+                isFuzzy: true,
+                similarity: avgSim,
+                didYouMean: titleName
               });
             }
           }

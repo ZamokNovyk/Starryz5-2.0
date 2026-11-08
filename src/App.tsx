@@ -515,11 +515,12 @@ export default function App() {
             query={currentQuery}
             results={searchResults}
             onSelectInstitution={handleSelectInstitution}
+            onSelectProfessor={(slug) => navigate(`/profesores/${slug}`)}
             onSelectStudent={(slugOrUid) => {
-              if (slugOrUid.startsWith('user-')) {
-                navigate(`/perfil/${slugOrUid.replace('user-', '')}`);
-              } else if (slugOrUid.startsWith('stud-')) {
-                navigate(`/estudiantes/${slugOrUid.replace('stud-', '')}`);
+              // Si viene de isppu el slug es tipo "brillith.rosario.solano.rojas" (tiene puntos)
+              // Si viene de users es un UID largo (firebase uid) o un id numérico
+              if (slugOrUid.includes('.') && slugOrUid.length < 80) {
+                navigate(`/estudiantes/${slugOrUid}`);
               } else if (slugOrUid.length > 25) {
                 navigate(`/perfil/${slugOrUid}`);
               } else {

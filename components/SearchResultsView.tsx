@@ -79,48 +79,83 @@ export default function SearchResultsView({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Cargar y consolidar todas las fuentes de datos (Instituciones, Profesores, Estudiantes)
+  // Cargar y consolidar todas las fuentes de datos (Instituciones, Profesores, Estudiantes, ISPPU)
   useEffect(() => {
     async function loadAllSearchData() {
       try {
         setLoading(true);
 
-        // Búsqueda EXCLUSIVA en la tabla 'users' de Supabase
-        let usersData: UnifiedSearchResult[] = [];
-        try {
-          const dbUsersRes = await supabase.from('users').select('*');
+        // Consultar users e isppu en paralelo
+        const [dbUsersRes, dbIsppuRes] = await Promise.all([
+          supabase.from('users').select('*'),
+          supabase.from('isppu').select('id,nombre,apellidos,nombres,apellido_paterno,apellido_materno,nombre_completo,tipo,carrera,avatar_url,is_claimed,claimed_by_uid'),
+        ]);
 
-          if (dbUsersRes.data) {
-            dbUsersRes.data
-              .filter(u => u.display_name || u.email || u.nombres || u.apellido_paterno)
-              .forEach((u) => {
-                const fullStructured = [u.nombres, u.apellido_paterno, u.apellido_materno]
-                  .filter(Boolean)
-                  .join(' ')
-                  .trim();
-                const displayName = fullStructured || u.display_name || u.email?.split('@')[0] || 'Usuario';
-                const isClaimed = !!u.claimed_student_id;
-                const subtitle = isClaimed 
-                  ? 'Estudiante Verificado' 
-                  : (u.role === 'admin' ? 'Administrador' : 'Usuario de Starryz');
+        // Rastrear UIDs reclamados para evitar duplicados
+        const claimedUids = new Set<string>();
+        let combined: UnifiedSearchResult[] = [];
 
-                usersData.push({
-                  id: `user-${u.id}`,
-                  name: displayName,
-                  category: 'Estudiante' as SearchCategory,
-                  typeKey: 'estudiantes' as FilterType,
-                  subtitle,
-                  image: u.photo_url || undefined,
-                  slug: u.id,
-                  rawItem: u,
-                });
+        // ── USUARIOS ──────────────────────────────────────────────────────────
+        if (dbUsersRes.data) {
+          dbUsersRes.data
+            .filter(u => u.display_name || u.email || u.nombres || u.apellido_paterno)
+            .forEach((u) => {
+              const fullStructured = [u.nombres, u.apellido_paterno, u.apellido_materno]
+                .filter(Boolean).join(' ').trim();
+              const displayName = fullStructured || u.display_name || u.email?.split('@')[0] || 'Usuario';
+              const isClaimed = !!u.claimed_student_id;
+              const subtitle = isClaimed
+                ? 'Estudiante Verificado'
+                : (u.role === 'admin' ? 'Administrador' : 'Usuario de Starryz');
+
+              if (u.firebase_uid) claimedUids.add(u.firebase_uid);
+              if (u.id) claimedUids.add(String(u.id));
+
+              combined.push({
+                id: `user-${u.id}`,
+                name: displayName,
+                category: 'Estudiante' as SearchCategory,
+                typeKey: 'estudiantes' as FilterType,
+                subtitle,
+                image: u.photo_url || undefined,
+                slug: u.id,
+                rawItem: u,
               });
-          }
-        } catch (e) {
-          console.warn('No se pudieron obtener usuarios para la búsqueda:', e);
+            });
         }
 
-        const unique = Array.from(new Map(usersData.map(item => [item.id, item])).values());
+        // ── ISPPU (padrón institucional) ──────────────────────────────────────
+        if (dbIsppuRes.data) {
+          dbIsppuRes.data.forEach((m: any) => {
+            // Evitar duplicar si el perfil ya fue reclamado por un usuario registrado
+            if (m.is_claimed && m.claimed_by_uid && claimedUids.has(m.claimed_by_uid)) return;
+
+            const fullStructured = [m.nombres, m.apellido_paterno, m.apellido_materno]
+              .filter(Boolean).join(' ').trim();
+            const legacyFull = m.nombre_completo || `${m.nombre || ''} ${m.apellidos || ''}`.trim();
+            const displayName = fullStructured || legacyFull || m.nombre || 'Miembro';
+
+            const isProfessor = m.tipo === 'profesor';
+            const category: SearchCategory = isProfessor ? 'Profesor' : 'Estudiante';
+            const typeKey: FilterType = isProfessor ? 'profesores' : 'estudiantes';
+            const subtitle = isProfessor
+              ? (m.carrera ? `Profesor • ${m.carrera}` : 'Profesor')
+              : (m.carrera ? `Estudiante • ${m.carrera}` : 'Estudiante Institucional');
+
+            combined.push({
+              id: `isppu-${m.id}`,
+              name: displayName,
+              category,
+              typeKey,
+              subtitle,
+              image: m.avatar_url || undefined,
+              slug: m.id,
+              rawItem: m,
+            });
+          });
+        }
+
+        const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
         setAllData(unique);
       } catch (err) {
         console.error('Error al compilar datos de búsqueda:', err);
@@ -228,10 +263,20 @@ export default function SearchResultsView({
   const finalResults = typeFiltered.slice(0, 10);
 
   const handleItemClick = (item: UnifiedSearchResult) => {
+    const isIsppuItem = item.id.startsWith('isppu-');
     if (item.category === 'Profesor' && onSelectProfessor) {
+      // Para isppu: slug es el id del miembro (ej: "carlos.mendoza.ramirez")
+      // Para users: poco probable que category sea Profesor, pero se maneja igual
       onSelectProfessor(item.slug || item.id);
     } else if (item.category === 'Estudiante' && onSelectStudent) {
-      onSelectStudent(item.slug || item.id);
+      if (isIsppuItem) {
+        // Slug del padrón institucional → ruta /estudiantes/:slug
+        onSelectStudent(item.slug || item.id);
+      } else {
+        // Usuario registrado → ruta /perfil/:uid (pasar el uid original)
+        const rawSlug = item.slug || item.id.replace('user-', '');
+        onSelectStudent(rawSlug.length > 25 ? rawSlug : rawSlug);
+      }
     } else if (['Universidad', 'Instituto', 'Colegio'].includes(item.category)) {
       onSelectInstitution(item.rawItem);
     }
