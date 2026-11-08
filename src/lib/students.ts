@@ -463,7 +463,7 @@ export async function claimStudentProfile(
     // A. Reasignar tablas de interacción desde el ID/slug de estudiante al UUID del usuario
     await Promise.all([
       supabase.from('users_actitud').update({ target_user_id: userUuidToAssign }).eq('target_user_id', student.id),
-      supabase.from('user_reseñas').update({ target_user_id: userUuidToAssign }).eq('target_user_id', student.id),
+      supabase.from('users_votes').update({ target_user_id: userUuidToAssign }).eq('target_user_id', student.id),
       supabase.from('users_crushes').update({ target_user_id: userUuidToAssign }).eq('target_user_id', student.id),
       supabase.from('user_love_messages').update({ target_user_id: userUuidToAssign }).eq('target_user_id', student.id),
       supabase.from('users_love_messages').update({ target_user_id: userUuidToAssign }).eq('target_user_id', student.id),
@@ -473,7 +473,7 @@ export async function claimStudentProfile(
     await Promise.all([
       supabase.from('users_crushes').delete().eq('target_user_id', userUuidToAssign).eq('voter_uid', userUuidToAssign),
       supabase.from('users_actitud').delete().eq('target_user_id', userUuidToAssign).eq('voter_uid', userUuidToAssign),
-      supabase.from('user_reseñas').delete().eq('target_user_id', userUuidToAssign).eq('voter_uid', userUuidToAssign),
+      supabase.from('users_votes').delete().eq('target_user_id', userUuidToAssign).eq('user_uid', userUuidToAssign),
     ]);
 
     // C. Calcular métricas reales directamente desde las tablas
@@ -486,8 +486,8 @@ export async function claimStudentProfile(
         ? supabase.from('users_crushes').select('id').or(`target_user_id.eq.${userUuidToAssign},target_user_id.eq.${student.id}`)
         : supabase.from('users_crushes').select('id').eq('target_user_id', userUuidToAssign),
       isStudentUuid
-        ? supabase.from('user_reseñas').select('stars').or(`target_user_id.eq.${userUuidToAssign},target_user_id.eq.${student.id}`)
-        : supabase.from('user_reseñas').select('stars').eq('target_user_id', userUuidToAssign),
+        ? supabase.from('users_votes').select('stars').or(`target_user_id.eq.${userUuidToAssign},target_user_id.eq.${student.id}`)
+        : supabase.from('users_votes').select('stars').eq('target_user_id', userUuidToAssign),
     ]);
 
     const tableFans = actitudRes.data ? actitudRes.data.filter((a: any) => a.attitude_type === 'fans' || a.attitude_type === 'fan').length : 0;
@@ -1277,9 +1277,9 @@ export async function getTodayStudentVotesDetails(
     if (uuids.length > 0) {
       try {
         let q = supabase
-          .from('user_reseñas')
+          .from('users_votes')
           .select('stars, created_at')
-          .eq('voter_uid', userUid)
+          .eq('user_uid', userUid)
           .gte('created_at', todayIso)
           .order('created_at', { ascending: false });
         if (uuids.length === 1) {
@@ -1297,9 +1297,9 @@ export async function getTodayStudentVotesDetails(
     if (nonUuids.length > 0) {
       try {
         let q = supabase
-          .from('user_reseñas')
+          .from('users_votes')
           .select('stars, created_at')
-          .eq('voter_uid', userUid)
+          .eq('user_uid', userUid)
           .gte('created_at', todayIso)
           .order('created_at', { ascending: false });
         if (nonUuids.length === 1) {
@@ -1381,7 +1381,7 @@ export async function getStudentReviewsList(
     if (uuids.length > 0) {
       try {
         let q = supabase
-          .from('user_reseñas')
+          .from('users_votes')
           .select('*')
           .order('created_at', { ascending: false });
         if (uuids.length === 1) {
@@ -1391,7 +1391,10 @@ export async function getStudentReviewsList(
         }
         const { data, error } = await q;
         if (!error && data) {
-          allData.push(...data);
+          allData.push(...data.map((r: any) => ({
+            ...r,
+            voter_uid: r.user_uid || r.voter_uid
+          })));
         }
       } catch (e) {}
     }
@@ -1400,7 +1403,7 @@ export async function getStudentReviewsList(
     if (nonUuids.length > 0) {
       try {
         let q = supabase
-          .from('user_reseñas')
+          .from('users_votes')
           .select('*')
           .order('created_at', { ascending: false });
         if (nonUuids.length === 1) {
@@ -1410,7 +1413,10 @@ export async function getStudentReviewsList(
         }
         const { data, error } = await q;
         if (!error && data) {
-          allData.push(...data);
+          allData.push(...data.map((r: any) => ({
+            ...r,
+            voter_uid: r.user_uid || r.voter_uid
+          })));
         }
       } catch (e) {}
     }
@@ -1502,7 +1508,7 @@ export async function getStudentRatingBreakdown(
     // 1. Consultar UUIDs válidos (100% seguro contra error 22P02 de PostgreSQL)
     if (uuids.length > 0) {
       try {
-        let q = supabase.from('user_reseñas').select('stars');
+        let q = supabase.from('users_votes').select('stars');
         if (uuids.length === 1) {
           q = q.eq('target_user_id', uuids[0]);
         } else {
@@ -1518,7 +1524,7 @@ export async function getStudentRatingBreakdown(
     // 2. Consultar IDs no-UUID en caso de que target_user_id sea de tipo TEXT
     if (nonUuids.length > 0) {
       try {
-        let q = supabase.from('user_reseñas').select('stars');
+        let q = supabase.from('users_votes').select('stars');
         if (nonUuids.length === 1) {
           q = q.eq('target_user_id', nonUuids[0]);
         } else {
@@ -1693,19 +1699,19 @@ export async function submitStudentVote(
 
     const { multiplier: currentVoterMultiplier, level: voterLevel } = getVoterMultiplier(voterScore);
 
-    // 1. Insertar el voto en 'user_reseñas'
+    // 1. Insertar el voto en 'users_votes' (tabla limpia sin triggers obsoletos)
     const { error: insertErr } = await supabase
-      .from('user_reseñas')
+      .from('users_votes')
       .insert([
         {
           target_user_id: studentId,
-          voter_uid: userUid,
+          user_uid: userUid,
           stars: cleanStars,
         }
       ]);
 
     if (insertErr) {
-      console.warn('Aviso al insertar en user_reseñas:', insertErr.message);
+      console.warn('Aviso al insertar en users_votes:', insertErr.message);
       return { success: false, new_score: 0, total_ratings: 0, error: insertErr.message };
     }
 
@@ -1717,7 +1723,7 @@ export async function submitStudentVote(
     const allVotes: any[] = [];
     if (uuids.length > 0) {
       try {
-        let q = supabase.from('user_reseñas').select('stars, voter_uid');
+        let q = supabase.from('users_votes').select('stars, user_uid');
         if (uuids.length === 1) q = q.eq('target_user_id', uuids[0]);
         else q = q.in('target_user_id', uuids);
         const { data, error } = await q;
@@ -1726,7 +1732,7 @@ export async function submitStudentVote(
     }
     if (nonUuids.length > 0) {
       try {
-        let q = supabase.from('user_reseñas').select('stars, voter_uid');
+        let q = supabase.from('users_votes').select('stars, user_uid');
         if (nonUuids.length === 1) q = q.eq('target_user_id', nonUuids[0]);
         else q = q.in('target_user_id', nonUuids);
         const { data, error } = await q;
@@ -1735,7 +1741,7 @@ export async function submitStudentVote(
     }
 
     // Mapear los scores de los votantes únicos para aplicar su multiplicador
-    const uniqueVoterUids = Array.from(new Set(allVotes.map(v => v.voter_uid).filter(Boolean)));
+    const uniqueVoterUids = Array.from(new Set(allVotes.map(v => v.user_uid).filter(Boolean)));
     const voterScoresMap = new Map<string, number>();
     voterScoresMap.set(userUid, voterScore);
 

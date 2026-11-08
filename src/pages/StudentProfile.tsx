@@ -373,7 +373,7 @@ export default function StudentProfile({
         {
           event: '*',
           schema: 'public',
-          table: 'user_reseñas'
+          table: 'users_votes'
         },
         (payload) => {
           const targetId = (payload.new as any)?.target_user_id || (payload.old as any)?.target_user_id;

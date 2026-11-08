@@ -102,12 +102,12 @@ export async function searchWithAutocomplete(
 
   try {
     // ── Filtrado en SERVIDOR: Supabase devuelve solo los que coinciden ──────
-    // Usamos ilike en los campos de nombre para evitar descargar toda la tabla
+    // Usamos columnas reales existentes en 'users' (display_name, email, nombres, apellido_paterno, apellido_materno)
     const usersFilter = supabase
       .from('users')
-      .select('id,firebase_uid,nombres,apellido_paterno,apellido_materno,display_name,username,email,photo_url,role,claimed_student_id')
+      .select('id,nombres,apellido_paterno,apellido_materno,display_name,email,photo_url,role,claimed_student_id')
       .or(
-        `nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern},apellido_materno.ilike.${likePattern},display_name.ilike.${likePattern}`
+        `display_name.ilike.${likePattern},email.ilike.${likePattern},nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern}`
       )
       .limit(30);
 
@@ -115,7 +115,7 @@ export async function searchWithAutocomplete(
       .from('isppu')
       .select('id,nombre,apellidos,nombres,apellido_paterno,apellido_materno,nombre_completo,tipo,carrera,avatar_url,is_claimed,claimed_by_uid')
       .or(
-        `nombre_completo.ilike.${likePattern},nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern},apellido_materno.ilike.${likePattern}`
+        `nombre_completo.ilike.${likePattern},nombre.ilike.${likePattern},nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern}`
       )
       .limit(30);
 

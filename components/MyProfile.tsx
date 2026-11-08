@@ -960,7 +960,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         {
           event: '*',
           schema: 'public',
-          table: 'user_reseñas'
+          table: 'users_votes'
         },
         () => {
           loadClaimedStudent();

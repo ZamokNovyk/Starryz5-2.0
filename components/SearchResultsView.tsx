@@ -111,13 +111,13 @@ export default function SearchResultsView({
       const [dbUsersRes, dbIsppuRes] = await Promise.all([
         supabase
           .from('users')
-          .select('id,firebase_uid,nombres,apellido_paterno,apellido_materno,display_name,email,photo_url,role,claimed_student_id')
-          .or(`nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern},apellido_materno.ilike.${likePattern},display_name.ilike.${likePattern}`)
+          .select('id,nombres,apellido_paterno,apellido_materno,display_name,email,photo_url,role,claimed_student_id')
+          .or(`display_name.ilike.${likePattern},email.ilike.${likePattern},nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern}`)
           .range(from, to),
         supabase
           .from('isppu')
           .select('id,nombre,apellidos,nombres,apellido_paterno,apellido_materno,nombre_completo,tipo,carrera,avatar_url,is_claimed,claimed_by_uid')
-          .or(`nombre_completo.ilike.${likePattern},nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern},apellido_materno.ilike.${likePattern}`)
+          .or(`nombre_completo.ilike.${likePattern},nombre.ilike.${likePattern},nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern}`)
           .range(from, to),
       ]);
 

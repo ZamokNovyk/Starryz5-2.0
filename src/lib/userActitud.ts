@@ -265,7 +265,7 @@ export async function getUserGivenInteractions(
     const { data: actitudData, error: actitudErr } = await supabase
       .from('users_actitud')
       .select('*')
-      .in('voter_uid', cleanUids)
+      .in('user_uid', cleanUids)
       .order('created_at', { ascending: false });
 
     if (actitudErr) {
@@ -274,9 +274,9 @@ export async function getUserGivenInteractions(
 
     // 2. Consultar user_reseñas para calificaciones otorgadas
     const { data: reviewsData, error: reviewsErr } = await supabase
-      .from('user_reseñas')
+      .from('users_votes')
       .select('*')
-      .in('voter_uid', cleanUids)
+      .in('user_uid', cleanUids)
       .order('created_at', { ascending: false });
 
     if (reviewsErr) {
@@ -464,7 +464,7 @@ export async function removeUserGivenInteraction(
       return true;
     } else if (item.type === 'ratings') {
       const { error } = await supabase
-        .from('user_reseñas')
+        .from('users_votes')
         .delete()
         .eq('id', item.id);
 
