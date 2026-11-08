@@ -107,15 +107,23 @@ export async function uploadPublicationImageFile(
  * Obtiene las publicaciones de un usuario específico ordenadas por fecha más reciente
  * y enriquece cada publicación consultando en 'users' (display_name, gender, country_code, score, photo_url)
  */
-export async function getUserPublications(userId: string): Promise<UserPublication[]> {
+export async function getUserPublications(
+  userId: string,
+  page: number = 0,
+  pageSize: number = 20
+): Promise<UserPublication[]> {
   if (!userId) return [];
 
   try {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+
     const { data, error } = await supabase
       .from('user-publications')
       .select('*')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
     if (error) {
       // Si la tabla aún no existe en Supabase, registrar aviso amigable y devolver lista vacía

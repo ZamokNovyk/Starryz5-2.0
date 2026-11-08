@@ -48,6 +48,9 @@ export default function UserPublicationsView({
   const { t } = useLanguage();
   const [publications, setPublications] = useState<UserPublication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMorePubs, setHasMorePubs] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   // Estados para creación de nueva publicación
@@ -73,22 +76,26 @@ export default function UserPublicationsView({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Cargar publicaciones del usuario
-  const loadPublications = async () => {
+  // Cargar publicaciones del usuario (paginado)
+  const loadPublications = async (page = 0, replace = true) => {
     if (!userId) return;
-    setLoading(true);
+    if (replace) setLoading(true);
+    else setLoadingMore(true);
     try {
-      const pubs = await getUserPublications(userId);
-      setPublications(pubs);
+      const pubs = await getUserPublications(userId, page, 20);
+      setPublications(prev => replace ? pubs : [...prev, ...pubs]);
+      setHasMorePubs(pubs.length >= 20);
+      setCurrentPage(page);
     } catch (err) {
       console.warn('Error al cargar publicaciones:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
   useEffect(() => {
-    loadPublications();
+    loadPublications(0, true);
   }, [userId]);
 
   // Manejar selección y compresión inmediata de la imagen
@@ -517,6 +524,26 @@ export default function UserPublicationsView({
                 onDelete={handleDeletePublication}
               />
             ))}
+
+            {/* Botón Cargar más publicaciones */}
+            {hasMorePubs && (
+              <div className="flex justify-center pt-2">
+                <button
+                  onClick={() => loadPublications(currentPage + 1, false)}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#141414] border border-zinc-800 hover:border-[#eab308]/50 text-zinc-300 hover:text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {loadingMore ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-3.5 h-3.5 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin" />
+                      Cargando...
+                    </span>
+                  ) : (
+                    <span>Ver más publicaciones</span>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         );
       })()}

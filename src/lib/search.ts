@@ -78,7 +78,8 @@ export function tokenSimilarity(a: string, b: string): number {
 }
 
 /**
- * Búsqueda inteligente y rápida con tolerancia a faltas de ortografía (Fuzzy Matching + ¿Quizás quisiste decir?)
+ * Búsqueda inteligente con filtrado server-side (ilike) + Fuzzy Matching local.
+ * Solo descarga los registros que coincidan con el query en Supabase, no toda la tabla.
  */
 export async function searchWithAutocomplete(
   rawQuery: string,
@@ -94,12 +95,31 @@ export async function searchWithAutocomplete(
   const fuzzyResults: SearchSuggestion[] = [];
   const seenIds = new Set<string>();
 
+  // Patrón para filtrado server-side: busca el primer token (más selectivo)
+  const likePattern = `%${normQuery}%`;
+  // Para búsqueda multi-token también buscamos por cada token individualmente
+  const tokenPatterns = queryTokens.map(t => `%${t}%`);
+
   try {
-    // Consultar ambas tablas en paralelo
-    const [usersRes, isppuRes] = await Promise.all([
-      supabase.from('users').select('*'),
-      supabase.from('isppu').select('id,nombre,apellidos,nombres,apellido_paterno,apellido_materno,nombre_completo,tipo,carrera,avatar_url,is_claimed,claimed_by_uid'),
-    ]);
+    // ── Filtrado en SERVIDOR: Supabase devuelve solo los que coinciden ──────
+    // Usamos ilike en los campos de nombre para evitar descargar toda la tabla
+    const usersFilter = supabase
+      .from('users')
+      .select('id,firebase_uid,nombres,apellido_paterno,apellido_materno,display_name,username,email,photo_url,role,claimed_student_id')
+      .or(
+        `nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern},apellido_materno.ilike.${likePattern},display_name.ilike.${likePattern}`
+      )
+      .limit(30);
+
+    const isppuFilter = supabase
+      .from('isppu')
+      .select('id,nombre,apellidos,nombres,apellido_paterno,apellido_materno,nombre_completo,tipo,carrera,avatar_url,is_claimed,claimed_by_uid')
+      .or(
+        `nombre_completo.ilike.${likePattern},nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern},apellido_materno.ilike.${likePattern}`
+      )
+      .limit(30);
+
+    const [usersRes, isppuRes] = await Promise.all([usersFilter, isppuFilter]);
 
     // ── USUARIOS (tabla users) ──────────────────────────────────────────────
     if (!usersRes.error && Array.isArray(usersRes.data)) {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Building2, 
   Filter, 
@@ -13,7 +13,9 @@ import {
   User, 
   Sparkles,
   ChevronRight,
-  Search
+  Search,
+  Loader2,
+  ChevronDown
 } from 'lucide-react';
 import { Institution, Student } from '@/lib/mockData';
 import { Professor as DbProfessor, getAllProfessors } from '@/src/lib/professors';
@@ -52,6 +54,12 @@ const FILTER_OPTIONS: { id: FilterType; label: string }[] = [
   { id: 'colegios', label: 'Colegios' },
 ];
 
+const PAGE_SIZE = 10;
+
+function normalizeLocal(text: string): string {
+  return (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
 export default function SearchResultsView({
   query,
   results: initialInstitutions,
@@ -67,6 +75,10 @@ export default function SearchResultsView({
 
   const [allData, setAllData] = useState<UnifiedSearchResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [suggestedCorrection, setSuggestedCorrection] = useState('');
 
   // Cerrar el menú desplegable al hacer clic fuera
   useEffect(() => {
@@ -79,188 +91,118 @@ export default function SearchResultsView({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Cargar y consolidar todas las fuentes de datos (Instituciones, Profesores, Estudiantes, ISPPU)
-  useEffect(() => {
-    async function loadAllSearchData() {
-      try {
-        setLoading(true);
+  // ── Carga server-side con ilike + paginación ────────────────────────────
+  const fetchData = useCallback(async (searchQuery: string, pageNum: number, replace: boolean) => {
+    if (!searchQuery.trim()) return;
+    
+    if (replace) setLoading(true);
+    else setLoadingMore(true);
 
-        // Consultar users e isppu en paralelo
-        const [dbUsersRes, dbIsppuRes] = await Promise.all([
-          supabase.from('users').select('*'),
-          supabase.from('isppu').select('id,nombre,apellidos,nombres,apellido_paterno,apellido_materno,nombre_completo,tipo,carrera,avatar_url,is_claimed,claimed_by_uid'),
-        ]);
+    try {
+      const normQ = normalizeLocal(searchQuery);
+      const likePattern = `%${normQ}%`;
+      const from = pageNum * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
 
-        // Rastrear UIDs reclamados para evitar duplicados
-        const claimedUids = new Set<string>();
-        let combined: UnifiedSearchResult[] = [];
+      const claimedUids = new Set<string>();
+      const combined: UnifiedSearchResult[] = [];
 
-        // ── USUARIOS ──────────────────────────────────────────────────────────
-        if (dbUsersRes.data) {
-          dbUsersRes.data
-            .filter(u => u.display_name || u.email || u.nombres || u.apellido_paterno)
-            .forEach((u) => {
-              const fullStructured = [u.nombres, u.apellido_paterno, u.apellido_materno]
-                .filter(Boolean).join(' ').trim();
-              const displayName = fullStructured || u.display_name || u.email?.split('@')[0] || 'Usuario';
-              const isClaimed = !!u.claimed_student_id;
-              const subtitle = isClaimed
-                ? 'Estudiante Verificado'
-                : (u.role === 'admin' ? 'Administrador' : 'Usuario de Starryz');
+      // Consultar users e isppu en paralelo con filtrado server-side
+      const [dbUsersRes, dbIsppuRes] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id,firebase_uid,nombres,apellido_paterno,apellido_materno,display_name,email,photo_url,role,claimed_student_id')
+          .or(`nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern},apellido_materno.ilike.${likePattern},display_name.ilike.${likePattern}`)
+          .range(from, to),
+        supabase
+          .from('isppu')
+          .select('id,nombre,apellidos,nombres,apellido_paterno,apellido_materno,nombre_completo,tipo,carrera,avatar_url,is_claimed,claimed_by_uid')
+          .or(`nombre_completo.ilike.${likePattern},nombres.ilike.${likePattern},apellido_paterno.ilike.${likePattern},apellido_materno.ilike.${likePattern}`)
+          .range(from, to),
+      ]);
 
-              if (u.firebase_uid) claimedUids.add(u.firebase_uid);
-              if (u.id) claimedUids.add(String(u.id));
+      // ── USUARIOS ──────────────────────────────────────────────────────────
+      if (dbUsersRes.data) {
+        dbUsersRes.data.forEach((u) => {
+          const fullStructured = [u.nombres, u.apellido_paterno, u.apellido_materno]
+            .filter(Boolean).join(' ').trim();
+          const displayName = fullStructured || u.display_name || u.email?.split('@')[0] || 'Usuario';
+          const isClaimed = !!u.claimed_student_id;
+          const subtitle = isClaimed
+            ? 'Estudiante Verificado'
+            : (u.role === 'admin' ? 'Administrador' : 'Usuario de Starryz');
 
-              combined.push({
-                id: `user-${u.id}`,
-                name: displayName,
-                category: 'Estudiante' as SearchCategory,
-                typeKey: 'estudiantes' as FilterType,
-                subtitle,
-                image: u.photo_url || undefined,
-                slug: u.id,
-                rawItem: u,
-              });
-            });
-        }
+          if (u.firebase_uid) claimedUids.add(u.firebase_uid);
+          if (u.id) claimedUids.add(String(u.id));
 
-        // ── ISPPU (padrón institucional) ──────────────────────────────────────
-        if (dbIsppuRes.data) {
-          dbIsppuRes.data.forEach((m: any) => {
-            // Evitar duplicar si el perfil ya fue reclamado por un usuario registrado
-            if (m.is_claimed && m.claimed_by_uid && claimedUids.has(m.claimed_by_uid)) return;
-
-            const fullStructured = [m.nombres, m.apellido_paterno, m.apellido_materno]
-              .filter(Boolean).join(' ').trim();
-            const legacyFull = m.nombre_completo || `${m.nombre || ''} ${m.apellidos || ''}`.trim();
-            const displayName = fullStructured || legacyFull || m.nombre || 'Miembro';
-
-            const isProfessor = m.tipo === 'profesor';
-            const category: SearchCategory = isProfessor ? 'Profesor' : 'Estudiante';
-            const typeKey: FilterType = isProfessor ? 'profesores' : 'estudiantes';
-            const subtitle = isProfessor
-              ? (m.carrera ? `Profesor • ${m.carrera}` : 'Profesor')
-              : (m.carrera ? `Estudiante • ${m.carrera}` : 'Estudiante Institucional');
-
-            combined.push({
-              id: `isppu-${m.id}`,
-              name: displayName,
-              category,
-              typeKey,
-              subtitle,
-              image: m.avatar_url || undefined,
-              slug: m.id,
-              rawItem: m,
-            });
+          combined.push({
+            id: `user-${u.id}`,
+            name: displayName,
+            category: 'Estudiante' as SearchCategory,
+            typeKey: 'estudiantes' as FilterType,
+            subtitle,
+            image: u.photo_url || undefined,
+            slug: u.firebase_uid || u.id,
+            rawItem: u,
           });
-        }
-
-        const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-        setAllData(unique);
-      } catch (err) {
-        console.error('Error al compilar datos de búsqueda:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadAllSearchData();
-  }, [initialInstitutions]);
-
-  const normalize = (text: string) => 
-    (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-
-  // Filtrado por término de búsqueda inteligente
-  const cleanQuery = normalize(query);
-  const queryTokens = cleanQuery.split(/\s+/).filter(Boolean);
-
-  // 1. Coincidencias Exactas o Subcadenas
-  const exactMatches = allData.filter((item) => {
-    if (!cleanQuery) return true;
-    const itemName = normalize(item.name);
-    const itemSub = normalize(item.subtitle);
-    const itemCat = normalize(item.category);
-
-    if (itemName.includes(cleanQuery) || itemSub.includes(cleanQuery) || itemCat.includes(cleanQuery)) {
-      return true;
-    }
-
-    if (queryTokens.length > 1) {
-      return queryTokens.every(token => itemName.includes(token) || itemSub.includes(token));
-    }
-    return false;
-  });
-
-  // 2. Coincidencias Difusas (Tolerancia a faltas de ortografía si no hay exactas o para sugerir)
-  let fuzzyMatches: UnifiedSearchResult[] = [];
-  let suggestedCorrection = '';
-
-  if (exactMatches.length === 0 && cleanQuery) {
-    const fuzzyCandidates: { item: UnifiedSearchResult; score: number }[] = [];
-
-    allData.forEach((item) => {
-      const itemName = normalize(item.name);
-      const itemSub = normalize(item.subtitle);
-      const wordsInItem = `${itemName} ${itemSub}`.split(/\s+/).filter(Boolean);
-
-      let matchedTokensCount = 0;
-      let totalSim = 0;
-
-      queryTokens.forEach((qToken) => {
-        let bestSim = 0;
-        wordsInItem.forEach((iWord) => {
-          // Token similarity
-          let sim = 0;
-          if (qToken === iWord) sim = 1.0;
-          else if (iWord.includes(qToken) || qToken.includes(iWord)) sim = 0.9;
-          else {
-            const maxLen = Math.max(qToken.length, iWord.length);
-            if (maxLen > 0) {
-              const matrix = Array.from({ length: qToken.length + 1 }, () => new Array(iWord.length + 1).fill(0));
-              for (let i = 0; i <= qToken.length; i++) matrix[i][0] = i;
-              for (let j = 0; j <= iWord.length; j++) matrix[0][j] = j;
-              for (let i = 1; i <= qToken.length; i++) {
-                for (let j = 1; j <= iWord.length; j++) {
-                  const cost = qToken[i - 1] === iWord[j - 1] ? 0 : 1;
-                  matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
-                }
-              }
-              const dist = matrix[qToken.length][iWord.length];
-              sim = Math.max(0, 1 - dist / maxLen);
-            }
-          }
-
-          if (sim > bestSim) bestSim = sim;
         });
-
-        if (bestSim >= 0.60) {
-          matchedTokensCount++;
-          totalSim += bestSim;
-        }
-      });
-
-      if (matchedTokensCount === queryTokens.length && matchedTokensCount > 0) {
-        fuzzyCandidates.push({ item, score: totalSim / queryTokens.length });
       }
-    });
 
-    fuzzyCandidates.sort((a, b) => b.score - a.score);
-    fuzzyMatches = fuzzyCandidates.map(c => c.item);
-    if (fuzzyMatches.length > 0) {
-      suggestedCorrection = fuzzyMatches[0].name;
+      // ── ISPPU (padrón institucional) ──────────────────────────────────────
+      if (dbIsppuRes.data) {
+        dbIsppuRes.data.forEach((m: any) => {
+          if (m.is_claimed && m.claimed_by_uid && claimedUids.has(m.claimed_by_uid)) return;
+
+          const fullStructured = [m.nombres, m.apellido_paterno, m.apellido_materno]
+            .filter(Boolean).join(' ').trim();
+          const legacyFull = m.nombre_completo || `${m.nombre || ''} ${m.apellidos || ''}`.trim();
+          const displayName = fullStructured || legacyFull || m.nombre || 'Miembro';
+
+          const isProfessor = m.tipo === 'profesor';
+          const category: SearchCategory = isProfessor ? 'Profesor' : 'Estudiante';
+          const typeKey: FilterType = isProfessor ? 'profesores' : 'estudiantes';
+          const subtitle = isProfessor
+            ? (m.carrera ? `Profesor • ${m.carrera}` : 'Profesor')
+            : (m.carrera ? `Estudiante • ${m.carrera}` : 'Estudiante Institucional');
+
+          combined.push({
+            id: `isppu-${m.id}`,
+            name: displayName,
+            category,
+            typeKey,
+            subtitle,
+            image: m.avatar_url || undefined,
+            slug: m.id,
+            rawItem: m,
+          });
+        });
+      }
+
+      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+      
+      setAllData(prev => replace ? unique : [...prev, ...unique]);
+      setHasMore(unique.length >= PAGE_SIZE);
+    } catch (err) {
+      console.error('Error al compilar datos de búsqueda:', err);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
     }
-  }
+  }, []);
 
-  const termMatches = exactMatches.length > 0 ? exactMatches : fuzzyMatches;
+  // Recargar desde cero cuando cambia el query o filter
+  useEffect(() => {
+    setPage(0);
+    setAllData([]);
+    setSuggestedCorrection('');
+    fetchData(query, 0, true);
+  }, [query, fetchData]);
 
-  // Filtrado por tipo de entidad seleccionado
-  const typeFiltered = termMatches.filter((item) => {
-    if (filter === 'todos') return true;
-    return item.typeKey === filter;
-  });
-
-  // Restricción a un MÁXIMO DE 10 RESULTADOS
-  const finalResults = typeFiltered.slice(0, 10);
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchData(query, nextPage, false);
+  };
 
   const handleItemClick = (item: UnifiedSearchResult) => {
     const isIsppuItem = item.id.startsWith('isppu-');
@@ -343,10 +285,10 @@ export default function SearchResultsView({
             Resultados para <span className="text-[#eab308]">&quot;{query}&quot;</span>
           </h1>
           <p className="text-xs sm:text-sm text-zinc-400 mt-2 flex items-center gap-2">
-            <span>Se encontraron {typeFiltered.length} resultados</span>
-            {typeFiltered.length > 10 && (
+            <span>{allData.length} resultado{allData.length !== 1 ? 's' : ''} cargados</span>
+            {hasMore && (
               <span className="text-[11px] font-mono text-[#eab308] bg-[#eab30810] px-2 py-0.5 rounded border border-[#eab30820]">
-                (Mostrando los primeros 10)
+                hay más disponibles
               </span>
             )}
           </p>
@@ -452,7 +394,7 @@ export default function SearchResultsView({
             </span>
           </h2>
           <span className="text-xs text-zinc-500 font-mono">
-            {finalResults.length} de {typeFiltered.length}
+            {allData.length} cargados{hasMore ? ' • más disponibles' : ''}
           </span>
         </div>
 
@@ -461,7 +403,7 @@ export default function SearchResultsView({
             <div className="w-8 h-8 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin"></div>
             <p className="text-xs text-zinc-400 font-mono">Buscando en la comunidad...</p>
           </div>
-        ) : finalResults.length === 0 ? (
+        ) : displayResults.length === 0 ? (
           <div className="bg-[#0d0d0d] border border-zinc-800/40 rounded-2xl p-16 text-center text-zinc-400 space-y-3">
             <Building2 className="w-12 h-12 text-zinc-600 mx-auto" />
             <p className="text-base font-bold text-white">No se encontraron resultados</p>
@@ -481,7 +423,7 @@ export default function SearchResultsView({
           
           /* ===== 1. VISTA EN LISTA ===== */
           <div className="space-y-2.5 animate-in fade-in duration-200">
-            {finalResults.map((item) => {
+            {allData.filter(i => filter === 'todos' || i.typeKey === filter).map((item) => {
               const Icon = getCategoryIcon(item.category);
               const badgeClass = getCategoryBadgeClass(item.category);
 
@@ -535,7 +477,7 @@ export default function SearchResultsView({
 
           /* ===== 2. VISTA EN MOSAICO (GRID) ===== */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-200">
-            {finalResults.map((item) => {
+            {allData.filter(i => filter === 'todos' || i.typeKey === filter).map((item) => {
               const Icon = getCategoryIcon(item.category);
               const badgeClass = getCategoryBadgeClass(item.category);
 
@@ -587,6 +529,29 @@ export default function SearchResultsView({
             })}
           </div>
 
+        )}
+
+        {/* ── BOTÓN CARGAR MÁS ── */}
+        {!loading && hasMore && (
+          <div className="flex justify-center pt-4">
+            <button
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#141414] border border-zinc-800 hover:border-[#eab308]/50 text-zinc-300 hover:text-white text-sm font-bold transition-all cursor-pointer disabled:opacity-50"
+            >
+              {loadingMore ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-[#eab308]" />
+                  <span>Cargando más...</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-4 h-4 text-[#eab308]" />
+                  <span>Cargar más resultados</span>
+                </>
+              )}
+            </button>
+          </div>
         )}
 
       </div>
