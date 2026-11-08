@@ -35,6 +35,9 @@ import {
   toggleStudentInteraction,
   incrementStudentViews,
   getTodayStudentVotes,
+  getTodayStudentVotesDetails,
+  TodayStudentVotesInfo,
+  getVoterMultiplier,
   getStudentRatingBreakdown,
   submitStudentVote,
   updateStudentWiki,
@@ -130,6 +133,30 @@ export default function StudentProfile({
   // Views Count State
   const [viewsCount, setViewsCount] = useState(0);
 
+  // Distópico: Cooldown de 30 minutos y multiplicador de impacto
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [canVoteCooldown, setCanVoteCooldown] = useState(true);
+  const [voteImpactMsg, setVoteImpactMsg] = useState<{ text: string; multiplier: number; level: string } | null>(null);
+
+  // Timer regresivo para el cooldown de 30 minutos
+  useEffect(() => {
+    if (cooldownSeconds <= 0) {
+      setCanVoteCooldown(true);
+      return;
+    }
+    setCanVoteCooldown(false);
+    const interval = setInterval(() => {
+      setCooldownSeconds(prev => {
+        if (prev <= 1) {
+          setCanVoteCooldown(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownSeconds]);
+
   // Love Messages States
   const [loveMessages, setLoveMessages] = useState<StudentLoveMessage[]>([]);
   const [loadingLoveMessages, setLoadingLoveMessages] = useState(false);
@@ -208,8 +235,15 @@ export default function StudentProfile({
 
           // Cargar interacciones y votos del usuario si está logueado
           if (user) {
-            const todayV = await getTodayStudentVotes(data.id || slug, user.uid);
-            setTodayVotes(todayV);
+            try {
+              const details = await getTodayStudentVotesDetails(data.id || slug, user.uid);
+              setTodayVotes(details.votes);
+              setCooldownSeconds(details.cooldownSecondsLeft);
+              setCanVoteCooldown(details.canVote);
+            } catch (err) {
+              const todayV = await getTodayStudentVotes(data.id || slug, user.uid);
+              setTodayVotes(todayV);
+            }
 
             // Cargar estado de suscripción a notificaciones
             try {
@@ -317,8 +351,15 @@ export default function StudentProfile({
         setRatingBreakdown(breakdown);
 
         if (user) {
-          const todayV = await getTodayStudentVotes(studentId, user.uid);
-          setTodayVotes(todayV);
+          try {
+            const details = await getTodayStudentVotesDetails(studentId, user.uid);
+            setTodayVotes(details.votes);
+            setCooldownSeconds(details.cooldownSecondsLeft);
+            setCanVoteCooldown(details.canVote);
+          } catch (err) {
+            const todayV = await getTodayStudentVotes(studentId, user.uid);
+            setTodayVotes(todayV);
+          }
         }
       } catch (err) {
         console.error('Error al refrescar votos de estudiante en tiempo real:', err);
@@ -723,7 +764,7 @@ export default function StudentProfile({
     }
   };
 
-  const opportunitiesLeft = Math.max(0, 6 - todayVotes.length);
+  const opportunitiesLeft = Math.max(0, 5 - todayVotes.length);
 
   const handleStarVote = async (stars: number) => {
     try {
@@ -744,6 +785,7 @@ export default function StudentProfile({
 
     if (!student) return;
     if (opportunitiesLeft <= 0) return;
+    if (cooldownSeconds > 0) return;
     if (votingInProgress) return;
 
     try {
@@ -755,11 +797,25 @@ export default function StudentProfile({
         setStudentScore(result.new_score);
         setStudentTotalRatings(result.total_ratings);
         setTodayVotes(prev => [...prev, stars]);
+        setCooldownSeconds(30 * 60); // 30 minutos
+        setCanVoteCooldown(false);
         setRatingBreakdown(prev => ({
           ...prev,
           [stars]: (prev[stars] || 0) + 1
         }));
+
+        if (result.multiplier && result.voter_level) {
+          setVoteImpactMsg({
+            text: `Voto ponderado como ${result.voter_level}`,
+            multiplier: result.multiplier,
+            level: result.voter_level
+          });
+          setTimeout(() => setVoteImpactMsg(null), 6000);
+        }
+
         promptNotificationOnAction('rating');
+      } else if (result && result.error) {
+        alert(result.error);
       }
     } catch (err) {
       console.error('Error al registrar calificación del estudiante:', err);
@@ -1141,7 +1197,7 @@ export default function StudentProfile({
                     ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                     : 'bg-[#eab308]/10 text-[#eab308] border-[#eab308]/20'
                 }`}>
-                  OPORTUNIDADES: {opportunitiesLeft}/6
+                  OPORTUNIDADES: {opportunitiesLeft}/5
                 </div>
               </div>
 
@@ -1215,6 +1271,18 @@ export default function StudentProfile({
                       ¿Conoces a {student.nombre}? ¡Deja tu calificación de estrellas!
                     </p>
 
+                    {/* Indicador de impacto distópico tras votar */}
+                    {voteImpactMsg && (
+                      <div className="p-3 bg-[#eab308]/10 border border-[#eab308]/30 rounded-xl text-center animate-in fade-in zoom-in-95 duration-200">
+                        <span className="text-[11px] font-black uppercase text-[#eab308] tracking-wider">
+                          ⭐ Impacto Distópico: {voteImpactMsg.level} (x{voteImpactMsg.multiplier.toFixed(1)})
+                        </span>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">
+                          Tu calificación se ponderó con tu estatus social actual.
+                        </p>
+                      </div>
+                    )}
+
                     {opportunitiesLeft === 0 ? (
                       <div className="space-y-3">
                         <div className="flex items-center justify-center gap-2 opacity-30 select-none">
@@ -1229,7 +1297,34 @@ export default function StudentProfile({
                         </div>
                         <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-center">
                           <p className="text-rose-400 text-xs font-black uppercase tracking-wider">
-                            ¡VUELVE MAÑANA PARA MÁS VOTOS!
+                            ¡LÍMITE DIARIO DE 5 VOTOS ALCANZADO PARA ESTE PERFIL!
+                          </p>
+                          <p className="text-[10px] text-zinc-500 mt-1">
+                            Vuelve mañana para emitir nuevas calificaciones a {student.nombre}.
+                          </p>
+                        </div>
+                      </div>
+                    ) : cooldownSeconds > 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-center gap-2 opacity-40 select-none">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <div
+                              key={star}
+                              className="p-2 bg-[#121212] border border-zinc-800 rounded-lg text-zinc-700 cursor-not-allowed"
+                            >
+                              <Star className="w-6 h-6" />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-center space-y-1">
+                          <p className="text-[#eab308] text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5">
+                            <span>ENFRIAMIENTO ACTIVO (ANTI-SPAM)</span>
+                          </p>
+                          <p className="text-[11px] text-zinc-300 font-mono font-bold">
+                            Próximo voto disponible en: {Math.floor(cooldownSeconds / 60)}:{(cooldownSeconds % 60).toString().padStart(2, '0')} min
+                          </p>
+                          <p className="text-[10px] text-zinc-500">
+                            Regla distópica: 30 minutos de espera entre votos a la misma persona ({opportunitiesLeft} restantes hoy).
                           </p>
                         </div>
                       </div>

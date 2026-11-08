@@ -1216,34 +1216,72 @@ export async function toggleStudentInteraction(
 }
 
 /**
- * Obtiene la lista de votos realizados por el usuario HOY para un estudiante desde 'user_reseñas'.
+ * Calcula el multiplicador del voto según el nivel/promedio de estrellas del votante (estilo Nosedive).
+ * - Élite (4.50 - 5.00): x3.0
+ * - Alto (4.00 - 4.49): x1.5
+ * - Estándar (3.50 - 3.99): x1.0
+ * - Bajo (3.00 - 3.49): x0.5
+ * - Marginado (< 3.00): x0.1
+ */
+export function getVoterMultiplier(score: number | null | undefined): { multiplier: number; level: string } {
+  const s = typeof score === 'number' && !isNaN(score) ? score : 3.5;
+  if (s >= 4.50) return { multiplier: 3.0, level: 'Élite' };
+  if (s >= 4.00) return { multiplier: 1.5, level: 'Alto' };
+  if (s >= 3.50) return { multiplier: 1.0, level: 'Estándar' };
+  if (s >= 3.00) return { multiplier: 0.5, level: 'Bajo' };
+  return { multiplier: 0.1, level: 'Marginado' };
+}
+
+export interface TodayStudentVotesInfo {
+  votes: number[];
+  canVote: boolean;
+  cooldownSecondsLeft: number;
+  lastVoteAt?: string;
+  opportunitiesLeft: number;
+}
+
+/**
+ * Obtiene la lista de votos realizados por el usuario HOY para un estudiante desde 'user_reseñas',
+ * junto con el tiempo restante de enfriamiento (cooldown de 30 minutos).
  */
 export async function getTodayStudentVotes(
   studentId: string, 
   userUid: string,
   candidateIds?: string[]
 ): Promise<number[]> {
+  const details = await getTodayStudentVotesDetails(studentId, userUid, candidateIds);
+  return details.votes;
+}
+
+export async function getTodayStudentVotesDetails(
+  studentId: string, 
+  userUid: string,
+  candidateIds?: string[]
+): Promise<TodayStudentVotesInfo> {
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayIso = todayStart.toISOString();
 
     const rawIds = Array.from(new Set([studentId, ...(candidateIds || [])].filter(Boolean) as string[]));
-    if (rawIds.length === 0 || !userUid) return [];
+    if (rawIds.length === 0 || !userUid) {
+      return { votes: [], canVote: true, cooldownSecondsLeft: 0, opportunitiesLeft: 5 };
+    }
 
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const uuids = rawIds.filter(id => UUID_REGEX.test(id));
     const nonUuids = rawIds.filter(id => !UUID_REGEX.test(id));
 
-    const votes: number[] = [];
+    const records: { stars: number; created_at: string }[] = [];
 
     if (uuids.length > 0) {
       try {
         let q = supabase
           .from('user_reseñas')
-          .select('stars')
+          .select('stars, created_at')
           .eq('voter_uid', userUid)
-          .gte('created_at', todayIso);
+          .gte('created_at', todayIso)
+          .order('created_at', { ascending: false });
         if (uuids.length === 1) {
           q = q.eq('target_user_id', uuids[0]);
         } else {
@@ -1251,7 +1289,7 @@ export async function getTodayStudentVotes(
         }
         const { data, error } = await q;
         if (!error && data) {
-          votes.push(...data.map((v: any) => Number(v.stars)));
+          records.push(...data.map((v: any) => ({ stars: Number(v.stars), created_at: v.created_at })));
         }
       } catch (e) {}
     }
@@ -1260,9 +1298,10 @@ export async function getTodayStudentVotes(
       try {
         let q = supabase
           .from('user_reseñas')
-          .select('stars')
+          .select('stars, created_at')
           .eq('voter_uid', userUid)
-          .gte('created_at', todayIso);
+          .gte('created_at', todayIso)
+          .order('created_at', { ascending: false });
         if (nonUuids.length === 1) {
           q = q.eq('target_user_id', nonUuids[0]);
         } else {
@@ -1270,14 +1309,42 @@ export async function getTodayStudentVotes(
         }
         const { data, error } = await q;
         if (!error && data) {
-          votes.push(...data.map((v: any) => Number(v.stars)));
+          records.push(...data.map((v: any) => ({ stars: Number(v.stars), created_at: v.created_at })));
         }
       } catch (e) {}
     }
 
-    return votes;
+    records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const votes = records.map(r => r.stars);
+    const opportunitiesLeft = Math.max(0, 5 - votes.length);
+
+    let cooldownSecondsLeft = 0;
+    let canVote = opportunitiesLeft > 0;
+    let lastVoteAt: string | undefined = undefined;
+
+    if (records.length > 0) {
+      lastVoteAt = records[0].created_at;
+      const lastTime = new Date(lastVoteAt).getTime();
+      const now = Date.now();
+      const diffMs = now - lastTime;
+      const cooldownMs = 30 * 60 * 1000; // 30 minutos
+
+      if (diffMs < cooldownMs) {
+        cooldownSecondsLeft = Math.ceil((cooldownMs - diffMs) / 1000);
+        canVote = false;
+      }
+    }
+
+    return {
+      votes,
+      canVote: opportunitiesLeft > 0 && cooldownSecondsLeft === 0,
+      cooldownSecondsLeft,
+      lastVoteAt,
+      opportunitiesLeft
+    };
   } catch (err) {
-    return [];
+    return { votes: [], canVote: true, cooldownSecondsLeft: 0, opportunitiesLeft: 5 };
   }
 }
 
@@ -1543,6 +1610,8 @@ export async function submitStudentVote(
   total_ratings: number; 
   breakdown?: { [key: number]: number };
   today_votes_count?: number;
+  multiplier?: number;
+  voter_level?: string;
   error?: string 
 }> {
   try {
@@ -1583,19 +1652,46 @@ export async function submitStudentVote(
       }
     } catch (e) {}
 
-    // LÍMITE ESTRICTO DE 6 CALIFICACIONES POR DÍA
-    const todayVotes = await getTodayStudentVotes(studentId, userUid, rawIds);
-    if (todayVotes.length >= 6) {
+    // LÍMITE ESTRICTO DE 5 CALIFICACIONES POR DÍA Y ENFRIAMIENTO (COOLDOWN) DE 30 MINUTOS
+    const voteDetails = await getTodayStudentVotesDetails(studentId, userUid, rawIds);
+    if (voteDetails.opportunitiesLeft <= 0) {
       return { 
         success: false, 
         new_score: 0, 
         total_ratings: 0, 
-        today_votes_count: todayVotes.length,
-        error: 'Has alcanzado el límite de 6 calificaciones por hoy para este usuario.' 
+        today_votes_count: voteDetails.votes.length,
+        error: 'Has alcanzado el límite de 5 calificaciones por hoy para este usuario.' 
+      };
+    }
+
+    if (voteDetails.cooldownSecondsLeft > 0) {
+      const minutesLeft = Math.ceil(voteDetails.cooldownSecondsLeft / 60);
+      return {
+        success: false,
+        new_score: 0,
+        total_ratings: 0,
+        today_votes_count: voteDetails.votes.length,
+        error: `Debes esperar ${minutesLeft} ${minutesLeft === 1 ? 'minuto' : 'minutos'} antes de volver a calificar a este mismo usuario.`
       };
     }
 
     const cleanStars = Math.max(1, Math.min(5, Math.round(stars)));
+
+    // Obtener el score actual del votante para determinar su multiplicador distópico
+    let voterScore = 3.5;
+    try {
+      const { data: voterUser } = await supabase
+        .from('users')
+        .select('score')
+        .eq('id', userUid)
+        .limit(1)
+        .maybeSingle();
+      if (voterUser && typeof voterUser.score === 'number') {
+        voterScore = voterUser.score;
+      }
+    } catch (e) {}
+
+    const { multiplier: currentVoterMultiplier, level: voterLevel } = getVoterMultiplier(voterScore);
 
     // 1. Insertar el voto en 'user_reseñas'
     const { error: insertErr } = await supabase
@@ -1613,14 +1709,15 @@ export async function submitStudentVote(
       return { success: false, new_score: 0, total_ratings: 0, error: insertErr.message };
     }
 
-    // 2. Calcular nuevo promedio, total y desglose por cada estrella desde user_reseñas
+    // 2. Calcular nuevo promedio ponderado con multiplicador distópico
+    // Obtenemos todos los votos registrados para este perfil
     const uuids = rawIds.filter(id => UUID_REGEX.test(id));
     const nonUuids = rawIds.filter(id => !UUID_REGEX.test(id));
 
     const allVotes: any[] = [];
     if (uuids.length > 0) {
       try {
-        let q = supabase.from('user_reseñas').select('stars');
+        let q = supabase.from('user_reseñas').select('stars, voter_uid');
         if (uuids.length === 1) q = q.eq('target_user_id', uuids[0]);
         else q = q.in('target_user_id', uuids);
         const { data, error } = await q;
@@ -1629,7 +1726,7 @@ export async function submitStudentVote(
     }
     if (nonUuids.length > 0) {
       try {
-        let q = supabase.from('user_reseñas').select('stars');
+        let q = supabase.from('user_reseñas').select('stars, voter_uid');
         if (nonUuids.length === 1) q = q.eq('target_user_id', nonUuids[0]);
         else q = q.in('target_user_id', nonUuids);
         const { data, error } = await q;
@@ -1637,11 +1734,39 @@ export async function submitStudentVote(
       } catch (e) {}
     }
 
+    // Mapear los scores de los votantes únicos para aplicar su multiplicador
+    const uniqueVoterUids = Array.from(new Set(allVotes.map(v => v.voter_uid).filter(Boolean)));
+    const voterScoresMap = new Map<string, number>();
+    voterScoresMap.set(userUid, voterScore);
+
+    if (uniqueVoterUids.length > 0) {
+      try {
+        const { data: dbVoters } = await supabase
+          .from('users')
+          .select('id, score')
+          .in('id', uniqueVoterUids);
+        if (dbVoters) {
+          dbVoters.forEach((u: any) => {
+            if (typeof u.score === 'number') voterScoresMap.set(u.id, u.score);
+          });
+        }
+      } catch (e) {}
+    }
+
+    let weightedSum = 0;
+    let totalWeights = 0;
+
+    allVotes.forEach(v => {
+      const vScore = voterScoresMap.get(v.voter_uid) ?? 3.5;
+      const { multiplier } = getVoterMultiplier(vScore);
+      const starVal = Number(v.stars);
+      weightedSum += starVal * multiplier;
+      totalWeights += multiplier;
+    });
+
     const totalRatings = allVotes.length > 0 ? allVotes.length : 1;
-    const sum = allVotes.length > 0 
-      ? allVotes.reduce((acc, curr) => acc + Number(curr.stars), 0)
-      : cleanStars;
-    const newScore = parseFloat((sum / totalRatings).toFixed(1));
+    const computedAverage = totalWeights > 0 ? (weightedSum / totalWeights) : cleanStars;
+    const newScore = parseFloat(Math.min(5.0, Math.max(1.0, computedAverage)).toFixed(1));
 
     const stars1 = allVotes.filter(v => Math.round(Number(v.stars)) === 1).length;
     const stars2 = allVotes.filter(v => Math.round(Number(v.stars)) === 2).length;
@@ -1695,7 +1820,9 @@ export async function submitStudentVote(
       new_score: newScore, 
       total_ratings: totalRatings,
       breakdown,
-      today_votes_count: todayVotes.length + 1
+      today_votes_count: voteDetails.votes.length + 1,
+      multiplier: currentVoterMultiplier,
+      voter_level: voterLevel
     };
   } catch (err: any) {
     console.error('Error al registrar calificación de estudiante/usuario:', err);

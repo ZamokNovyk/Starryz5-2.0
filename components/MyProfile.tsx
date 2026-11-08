@@ -64,6 +64,7 @@ import {
   getStudentLoveMessages,
   StudentLoveMessage,
   getTodayStudentVotes,
+  getTodayStudentVotesDetails,
   submitStudentVote,
   createStudentLoveMessage,
   deleteStudentLoveMessage,
@@ -274,14 +275,28 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     loadCrushes();
   }, [uid, user?.uid, dbUser?.id, (dbUser as any)?.crushes_count]);
 
-  // Votos de estrellas y límite diario de 6 calificaciones por día
+  // Votos de estrellas: límite diario de 5 por perfil y cooldown de 30 minutos
   const [todayVotes, setTodayVotes] = useState<number[]>([]);
-  const opportunitiesLeft = Math.max(0, 6 - todayVotes.length);
+  const [profileCooldownSeconds, setProfileCooldownSeconds] = useState(0);
+  const [voteImpactMsg, setVoteImpactMsg] = useState<{ level: string; multiplier: number } | null>(null);
+  const opportunitiesLeft = Math.max(0, 5 - todayVotes.length);
+
+  useEffect(() => {
+    if (profileCooldownSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setProfileCooldownSeconds(prev => {
+        if (prev <= 1) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [profileCooldownSeconds]);
 
   useEffect(() => {
     const targetUid = uid || user?.uid;
     if (!user?.uid || !targetUid || isSelfProfile) {
       setTodayVotes([]);
+      setProfileCooldownSeconds(0);
       return;
     }
 
@@ -294,8 +309,9 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           claimedStudent?.id
         ].filter(Boolean) as string[]));
 
-        const votes = await getTodayStudentVotes(candidateIds[0], user.uid, candidateIds);
-        setTodayVotes(votes);
+        const details = await getTodayStudentVotesDetails(candidateIds[0], user.uid, candidateIds);
+        setTodayVotes(details.votes);
+        setProfileCooldownSeconds(details.cooldownSecondsLeft);
       } catch (err) {
         console.warn('Error al cargar votos diarios del usuario:', err);
       }
@@ -451,7 +467,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       return;
     }
     if (opportunitiesLeft <= 0) {
-      setErrorMsg('Has alcanzado el límite diario de 6 calificaciones para este usuario.');
+      setErrorMsg('Has alcanzado el límite diario de 5 calificaciones para este usuario.');
+      return;
+    }
+    if (profileCooldownSeconds > 0) {
+      const mins = Math.ceil(profileCooldownSeconds / 60);
+      setErrorMsg(`Enfriamiento activo: espera ${mins} ${mins === 1 ? 'minuto' : 'minutos'} antes de volver a calificar a este usuario.`);
       return;
     }
     if (profileVotingInProgress) return;
@@ -477,8 +498,18 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       const res = await submitStudentVote(targetUserId, user.uid, stars, candidateIds);
       if (res.success) {
         setTodayVotes(prev => [...prev, stars]);
-        setProfileVoteSuccessMsg(`¡Has calificado con ${stars} ${stars === 1 ? 'estrella' : 'estrellas'} exitosamente!`);
-        setTimeout(() => setProfileVoteSuccessMsg(null), 3500);
+        setProfileCooldownSeconds(30 * 60); // 30 minutos
+
+        if (res.multiplier && res.voter_level) {
+          setVoteImpactMsg({ level: res.voter_level, multiplier: res.multiplier });
+          setProfileVoteSuccessMsg(`¡Has calificado con ${stars}★ (${res.voter_level} x${res.multiplier.toFixed(1)})!`);
+        } else {
+          setProfileVoteSuccessMsg(`¡Has calificado con ${stars} ${stars === 1 ? 'estrella' : 'estrellas'} exitosamente!`);
+        }
+        setTimeout(() => {
+          setProfileVoteSuccessMsg(null);
+          setVoteImpactMsg(null);
+        }, 4500);
 
         if (res.breakdown) {
           setClaimedRatingBreakdown(res.breakdown);
@@ -2014,7 +2045,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                           ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                           : 'bg-[#eab308]/10 text-[#eab308] border-[#eab308]/20'
                       }`}>
-                        OPORTUNIDADES: {opportunitiesLeft}/6
+                        OPORTUNIDADES: {opportunitiesLeft}/5
                       </div>
                     )}
                     <div className="px-3 py-1 rounded-full bg-[#eab308]/15 border border-[#eab308]/30 text-[#eab308] text-xs font-black tracking-wider uppercase">
@@ -2078,6 +2109,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       ¿Conoces a {dbUser?.display_name || user?.displayName || 'este usuario'}? ¡Deja tu calificación de estrellas!
                     </p>
 
+                    {/* Alerta de enfriamiento distópico o límite alcanzado */}
                     {opportunitiesLeft === 0 ? (
                       <div className="space-y-3">
                         <div className="flex items-center justify-center gap-2 opacity-30 select-none">
@@ -2090,9 +2122,38 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                             </div>
                           ))}
                         </div>
-                        <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-wider text-center">
-                          Has alcanzado el límite de 6 calificaciones por hoy para este perfil.
-                        </p>
+                        <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center">
+                          <p className="text-rose-400 text-xs font-black uppercase tracking-wider">
+                            Límite diario de 5 votos alcanzado para este perfil.
+                          </p>
+                          <p className="text-[10px] text-zinc-500 mt-0.5">
+                            Podrás volver a calificar a este usuario mañana.
+                          </p>
+                        </div>
+                      </div>
+                    ) : profileCooldownSeconds > 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-center gap-2 opacity-40 select-none">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <div
+                              key={star}
+                              className="p-2.5 bg-[#121212] border border-zinc-800 rounded-xl text-zinc-700 cursor-not-allowed"
+                            >
+                              <Star className="w-6 h-6" />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center space-y-1">
+                          <p className="text-[#eab308] text-xs font-black uppercase tracking-wider">
+                            Enfriamiento Activo (Anti-Spam)
+                          </p>
+                          <p className="text-[11px] text-zinc-300 font-mono font-bold">
+                            Próximo voto disponible en: {Math.floor(profileCooldownSeconds / 60)}:{(profileCooldownSeconds % 60).toString().padStart(2, '0')} min
+                          </p>
+                          <p className="text-[10px] text-zinc-500">
+                            Regla distópica: 30 minutos de espera entre votos a una misma persona ({opportunitiesLeft} restantes hoy).
+                          </p>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center gap-2">
