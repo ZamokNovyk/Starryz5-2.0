@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Star, 
-  MessageSquare, 
-  Bookmark, 
-  Eye, 
-  Share2, 
+import {
+  Star,
+  MessageSquare,
+  Bookmark,
+  Eye,
+  Share2,
   Trash2,
   Send,
   X,
@@ -30,8 +30,8 @@ import {
   Reply,
   CornerDownRight
 } from 'lucide-react';
-import { 
-  UserPublication, 
+import {
+  UserPublication,
   PublicationReviewComment,
   getPublicationReviews,
   getUserPublicationRating,
@@ -93,10 +93,10 @@ export default function PublicationCard({
     publication.rating_avg && publication.rating_avg > 0 ? publication.rating_avg.toFixed(2) : '0.00'
   );
   const [publicationVotesCount, setPublicationVotesCount] = useState<number>(
-    (publication.star_1 || 0) + 
-    (publication.star_2 || 0) + 
-    (publication.star_3 || 0) + 
-    (publication.star_4 || 0) + 
+    (publication.star_1 || 0) +
+    (publication.star_2 || 0) +
+    (publication.star_3 || 0) +
+    (publication.star_4 || 0) +
     (publication.star_5 || 0) || 0
   );
 
@@ -148,8 +148,8 @@ export default function PublicationCard({
     try {
       const audio = new Audio(`/sonidos/star${stars}.mp3`);
       audio.volume = 0.6;
-      audio.play().catch(() => {});
-    } catch {}
+      audio.play().catch(() => { });
+    } catch { }
   };
 
   // Formateo de fecha relativo y directo (ej: 5 min, 3 horas, ayer, 5 días, 1 semana, o fecha exacta si pasa de 7 días)
@@ -212,7 +212,7 @@ export default function PublicationCard({
             setReviewStars(null);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     loadUserState();
@@ -391,8 +391,8 @@ export default function PublicationCard({
           replyingTo
             ? `¡Respuesta a @${replyingTo.userName} enviada!`
             : isReseña
-            ? '¡Reseña guardada con éxito!'
-            : '¡Comentario publicado con éxito!'
+              ? '¡Reseña guardada con éxito!'
+              : '¡Comentario publicado con éxito!'
         );
         setTimeout(() => setFeedbackMsg(null), 3000);
       } else if (res.error) {
@@ -577,7 +577,7 @@ export default function PublicationCard({
           text: publication.description || 'Mira esta publicación en Starryz 5',
           url: shareUrl,
         });
-      } catch {}
+      } catch { }
     } else {
       handleCopyLink();
     }
@@ -587,14 +587,14 @@ export default function PublicationCard({
   const author = publication.author_data;
   const displayName = author?.display_name || publication.user_display_name || 'Estudiante';
   const avatarUrl = author?.photo_url || publication.user_avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
-  
+
   const rawGender = (author?.gender || '').toLowerCase();
   const isMale = rawGender === 'male' || rawGender === 'hombre';
   const isFemale = rawGender === 'female' || rawGender === 'mujer';
   const countryCode = (author?.country_code || 'pe').toLowerCase();
 
-  const profileScore = author?.score !== undefined && author?.score !== null 
-    ? Number(author.score).toFixed(1) 
+  const profileScore = author?.score !== undefined && author?.score !== null
+    ? Number(author.score).toFixed(1)
     : '5.0';
 
   const handleDelete = async () => {
@@ -614,11 +614,10 @@ export default function PublicationCard({
       setVisibility(newVisibility);
       setShowVisibilityMenu(false);
       await updatePublicationVisibility(publication.id, effectiveUserId, newVisibility);
-      setFeedbackMsg(`Visibilidad cambiada: ${
-        newVisibility === 'solo_yo' ? 'Solo yo (Oculto)' :
-        newVisibility === 'solo_seguidores' ? 'Solo seguidores' :
-        newVisibility === 'solo_fans' ? 'Solo fans' : 'Todos'
-      }`);
+      setFeedbackMsg(`Visibilidad cambiada: ${newVisibility === 'solo_yo' ? 'Solo yo (Oculto)' :
+          newVisibility === 'solo_seguidores' ? 'Solo seguidores' :
+            newVisibility === 'solo_fans' ? 'Solo fans' : 'Todos'
+        }`);
       setTimeout(() => setFeedbackMsg(null), 3000);
     } catch (err) {
       console.warn('Error al actualizar visibilidad:', err);
@@ -633,8 +632,8 @@ export default function PublicationCard({
     setTimeout(() => setShowReportToast(false), 3500);
   };
 
-  const shareUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/perfil/${publication.user_id}?pub=${publication.id}` 
+  const shareUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/perfil/${publication.user_id}?pub=${publication.id}`
     : '';
 
   return (
@@ -655,9 +654,9 @@ export default function PublicationCard({
           {/* Dropdown del menú de opciones (Visibilidad, Reportar, Eliminar) */}
           {showOptionsMenu && (
             <>
-              <div 
-                className="fixed inset-0 z-40" 
-                onClick={() => setShowOptionsMenu(false)} 
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowOptionsMenu(false)}
               />
               <div className="absolute right-0 top-full mt-1 w-52 bg-[#12131a] border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-1">
                 {/* Si es dueño: Opción de visibilidad / Modo vista */}
@@ -674,9 +673,8 @@ export default function PublicationCard({
                         handleChangeVisibility('todos');
                         setShowOptionsMenu(false);
                       }}
-                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                        visibility === 'todos' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                      }`}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${visibility === 'todos' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
                     >
                       <span className="flex items-center gap-2">
                         <Globe className="w-3.5 h-3.5 text-emerald-400" />
@@ -692,9 +690,8 @@ export default function PublicationCard({
                         handleChangeVisibility('solo_yo');
                         setShowOptionsMenu(false);
                       }}
-                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                        visibility === 'solo_yo' ? 'bg-amber-500/20 text-amber-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                      }`}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${visibility === 'solo_yo' ? 'bg-amber-500/20 text-amber-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
                     >
                       <span className="flex items-center gap-2">
                         <Lock className="w-3.5 h-3.5 text-amber-400" />
@@ -710,9 +707,8 @@ export default function PublicationCard({
                         handleChangeVisibility('solo_seguidores');
                         setShowOptionsMenu(false);
                       }}
-                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                        visibility === 'solo_seguidores' ? 'bg-blue-500/20 text-blue-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                      }`}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${visibility === 'solo_seguidores' ? 'bg-blue-500/20 text-blue-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
                     >
                       <span className="flex items-center gap-2">
                         <Users className="w-3.5 h-3.5 text-blue-400" />
@@ -728,9 +724,8 @@ export default function PublicationCard({
                         handleChangeVisibility('solo_fans');
                         setShowOptionsMenu(false);
                       }}
-                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                        visibility === 'solo_fans' ? 'bg-pink-500/20 text-pink-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
-                      }`}
+                      className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${visibility === 'solo_fans' ? 'bg-pink-500/20 text-pink-300' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                        }`}
                     >
                       <span className="flex items-center gap-2">
                         <Heart className="w-3.5 h-3.5 text-pink-400" />
@@ -799,9 +794,8 @@ export default function PublicationCard({
               {/* Sexo (gender) */}
               {(isMale || isFemale) && (
                 <span
-                  className={`text-xs font-black leading-none select-none flex-shrink-0 ${
-                    isMale ? 'text-blue-400' : 'text-pink-400'
-                  }`}
+                  className={`text-xs font-black leading-none select-none flex-shrink-0 ${isMale ? 'text-blue-400' : 'text-pink-400'
+                    }`}
                   title={isMale ? 'Hombre ♂' : 'Mujer ♀'}
                 >
                   {isMale ? '♂' : '♀'}
@@ -873,11 +867,10 @@ export default function PublicationCard({
                 className="p-1.5 text-zinc-500 hover:text-[#facc15] hover:scale-125 transition-all cursor-pointer active:scale-95 group"
               >
                 <Star
-                  className={`w-6 h-6 sm:w-7 sm:h-7 transition-all ${
-                    isSelected
+                  className={`w-6 h-6 sm:w-7 sm:h-7 transition-all ${isSelected
                       ? 'fill-[#facc15] text-[#facc15] scale-110 drop-shadow-[0_0_10px_rgba(250,204,21,0.6)]'
                       : 'text-zinc-500 stroke-[1.5] group-hover:stroke-[#facc15]'
-                  }`}
+                    }`}
                 />
               </button>
             );
@@ -885,7 +878,7 @@ export default function PublicationCard({
         </div>
 
         {/* Calificación general de la imagen / publicación (debajo de las estrellas grandes) */}
-        <div 
+        <div
           className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#181922] border border-[#373948] text-[#facc15] text-xs font-extrabold tracking-wider shadow-sm select-none mt-1"
           title="Calificación general de la publicación"
         >
@@ -914,9 +907,8 @@ export default function PublicationCard({
         <button
           type="button"
           onClick={handleToggleComments}
-          className={`flex items-center gap-2 transition-colors cursor-pointer py-1.5 px-2 rounded-xl group ${
-            showComments ? 'bg-blue-500/10 text-blue-400' : 'hover:text-white hover:bg-zinc-900/60'
-          }`}
+          className={`flex items-center gap-2 transition-colors cursor-pointer py-1.5 px-2 rounded-xl group ${showComments ? 'bg-blue-500/10 text-blue-400' : 'hover:text-white hover:bg-zinc-900/60'
+            }`}
           title="Ver o escribir comentarios"
         >
           <MessageSquare className={`w-4 h-4 transition-colors ${showComments ? 'text-blue-400' : 'text-zinc-400 group-hover:text-blue-400'}`} />
@@ -928,14 +920,12 @@ export default function PublicationCard({
           type="button"
           onClick={handleToggleBookmark}
           disabled={savingBookmark}
-          className={`flex items-center gap-2 transition-colors cursor-pointer py-1.5 px-2 rounded-xl group ${
-            saved ? 'text-amber-400 bg-amber-500/10' : 'hover:text-white hover:bg-zinc-900/60'
-          }`}
+          className={`flex items-center gap-2 transition-colors cursor-pointer py-1.5 px-2 rounded-xl group ${saved ? 'text-amber-400 bg-amber-500/10' : 'hover:text-white hover:bg-zinc-900/60'
+            }`}
           title={saved ? 'Quitar de guardados' : 'Guardar en Mi Perfil > Guardados'}
         >
-          <Bookmark className={`w-4 h-4 transition-colors ${
-            saved ? 'fill-amber-400 text-amber-400' : 'text-zinc-400 group-hover:text-amber-400'
-          }`} />
+          <Bookmark className={`w-4 h-4 transition-colors ${saved ? 'fill-amber-400 text-amber-400' : 'text-zinc-400 group-hover:text-amber-400'
+            }`} />
           <span className="font-mono text-xs text-zinc-300">
             {formatCount(savesCount)}
           </span>
@@ -976,11 +966,10 @@ export default function PublicationCard({
               <button
                 type="button"
                 onClick={() => setCommentMode('comentario')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                  commentMode === 'comentario'
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${commentMode === 'comentario'
                     ? 'bg-zinc-800 text-white shadow-sm'
                     : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60'
-                }`}
+                  }`}
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 <span>Comentario</span>
@@ -995,11 +984,10 @@ export default function PublicationCard({
                     setReviewStars(userVote);
                   }
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                  commentMode === 'reseña'
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${commentMode === 'reseña'
                     ? 'bg-[#eab308]/15 border border-[#eab308]/40 text-[#facc15] shadow-sm'
                     : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60'
-                }`}
+                  }`}
               >
                 <Star className="w-3.5 h-3.5" />
                 <span>Reseña (1 por usuario)</span>
@@ -1028,11 +1016,10 @@ export default function PublicationCard({
                         {[1, 2, 3, 4, 5].map((star) => (
                           <Star
                             key={star}
-                            className={`w-4 h-4 ${
-                              star <= userVote
+                            className={`w-4 h-4 ${star <= userVote
                                 ? 'fill-[#facc15] text-[#facc15] drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]'
                                 : 'text-zinc-600'
-                            }`}
+                              }`}
                           />
                         ))}
                         <span className="text-xs font-black text-[#facc15] ml-1">
@@ -1141,11 +1128,10 @@ export default function PublicationCard({
             <button
               type="button"
               onClick={() => setCommentsFilter('todo')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                commentsFilter === 'todo'
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${commentsFilter === 'todo'
                   ? 'bg-zinc-800 text-white shadow-sm'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60'
-              }`}
+                }`}
             >
               <span>Todo</span>
               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-900 border border-zinc-700/60 text-zinc-400">
@@ -1156,11 +1142,10 @@ export default function PublicationCard({
             <button
               type="button"
               onClick={() => setCommentsFilter('mi_interaccion')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                commentsFilter === 'mi_interaccion'
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${commentsFilter === 'mi_interaccion'
                   ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400 shadow-sm'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60'
-              }`}
+                }`}
             >
               <span>Mi interacción</span>
               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-900 border border-zinc-700/60 text-amber-400">
@@ -1311,11 +1296,10 @@ export default function PublicationCard({
                                 {[1, 2, 3, 4, 5].map((star) => (
                                   <Star
                                     key={star}
-                                    className={`w-3.5 h-3.5 ${
-                                      star <= (rev.stars || 0)
+                                    className={`w-3.5 h-3.5 ${star <= (rev.stars || 0)
                                         ? 'fill-[#facc15] text-[#facc15]'
                                         : 'text-zinc-600'
-                                    }`}
+                                      }`}
                                   />
                                 ))}
                                 <span className="text-[10px] font-bold text-[#facc15] ml-1">
@@ -1452,11 +1436,11 @@ export default function PublicationCard({
 
       {/* MODAL PARA COMPARTIR CON IMAGEN Y PREVIEWS DE REDES SOCIALES */}
       {showShareModal && (
-        <div 
+        <div
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setShowShareModal(false)}
         >
-          <div 
+          <div
             className="bg-[#0e0f14] border border-zinc-800 rounded-3xl p-5 sm:p-6 max-w-md w-full space-y-5 shadow-2xl relative"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1556,11 +1540,10 @@ export default function PublicationCard({
               <button
                 type="button"
                 onClick={handleCopyLink}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer flex-shrink-0 ${
-                  copiedLink
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer flex-shrink-0 ${copiedLink
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                     : 'bg-[#eab308] hover:bg-yellow-400 text-black shadow-sm'
-                }`}
+                  }`}
               >
                 {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedLink ? 'Copiado' : 'Copiar'}</span>
