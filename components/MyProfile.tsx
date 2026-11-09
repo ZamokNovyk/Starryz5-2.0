@@ -1897,7 +1897,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             }`}
           >
             <div className="flex items-center gap-2">
-              <User className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'mis_datos' ? 'text-sky-400' : ''}`} />
+              <User className={`w-4 h-4 flex-shrink-0 text-sky-400`} />
               <span>{isOwnProfile ? t('profile.my_data', 'Mis Datos') : t('profile.data', 'Datos')}</span>
             </div>
             {claimedMainTab === 'mis_datos' && (
@@ -1917,7 +1917,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             }`}
           >
             <div className="flex items-center gap-2">
-              <Layers className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'publicaciones' ? 'text-violet-400' : 'text-current'}`} />
+              <Layers className="w-4 h-4 flex-shrink-0 text-violet-400" />
               <span>{t('profile.publications', 'Publicaciones')}</span>
             </div>
             {claimedMainTab === 'publicaciones' && (
@@ -1937,7 +1937,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             }`}
           >
             <div className="flex items-center gap-2">
-              <Star className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'reseñas' ? 'text-[#facc15] fill-[#facc15]' : 'text-current'}`} />
+              <Star className="w-4 h-4 flex-shrink-0 text-[#facc15] fill-[#facc15]" />
               <span>{t('profile.reviews_received', 'Reseñas Recibidas')}</span>
             </div>
             {claimedMainTab === 'reseñas' && (
@@ -1957,8 +1957,8 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             }`}
           >
             <div className="flex items-center gap-2">
-              <Heart className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'crushes' ? 'text-rose-500 fill-rose-500' : 'text-current'}`} />
-              <span>{t('profile.crushes', 'Crushes')} {crushesCount > 0 ? `(${crushesCount})` : ''}</span>
+              <Heart className="w-4 h-4 flex-shrink-0 text-rose-500 fill-rose-500" />
+              <span>{t('profile.crushes', 'Crushes')}</span>
             </div>
             {claimedMainTab === 'crushes' && (
               <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
@@ -1978,7 +1978,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               }`}
             >
               <div className="flex items-center gap-2">
-                <Bookmark className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'guardados' ? 'text-amber-400 fill-amber-400' : 'text-current'}`} />
+                <Bookmark className="w-4 h-4 flex-shrink-0 text-amber-400 fill-amber-400" />
                 <span>{t('profile.saved', 'Guardados')}</span>
               </div>
               {claimedMainTab === 'guardados' && (
