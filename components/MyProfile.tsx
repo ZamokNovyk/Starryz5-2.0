@@ -1991,53 +1991,69 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         {/* Sub-pestañas dentro de "Mis Datos" */}
         {claimedMainTab === 'mis_datos' && (
           <div className="flex items-center gap-1.5 bg-[#090909] p-1.5 rounded-xl border border-zinc-800/40 max-w-full overflow-x-auto no-scrollbar animate-in fade-in duration-200">
+            {/* Sub-tab: Información */}
             <button
               type="button"
               onClick={() => setProfileTab('info')}
               title="Información"
-              className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`relative py-1.5 px-2.5 sm:px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap ${
                 profileTab === 'info'
-                  ? 'bg-zinc-800 text-white font-extrabold px-3'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 px-2.5 sm:px-3'
+                  ? 'text-white font-extrabold'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
               }`}
             >
-              <UserCheck className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className={profileTab === 'info' ? 'inline' : 'hidden sm:inline'}>{t('profile.information', 'Información')}</span>
+              <span className="flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 flex-shrink-0 text-sky-400" />
+                <span className={profileTab === 'info' ? 'inline' : 'hidden sm:inline'}>{t('profile.information', 'Información')}</span>
+              </span>
+              {profileTab === 'info' && (
+                <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-[#eab308]" />
+              )}
             </button>
 
+            {/* Sub-tab: Mis Interacciones */}
             <button
               type="button"
               onClick={() => setProfileTab('interactions')}
               title="Mis Interacciones"
-              className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`relative py-1.5 px-2.5 sm:px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap ${
                 profileTab === 'interactions'
-                  ? 'bg-zinc-800 text-white font-extrabold px-3'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 px-2.5 sm:px-3'
+                  ? 'text-white font-extrabold'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
               }`}
             >
-              <Activity className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className={profileTab === 'interactions' ? 'inline' : 'hidden sm:inline'}>{t('profile.my_interactions', 'Mis Interacciones')}</span>
+              <span className="flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" />
+                <span className={profileTab === 'interactions' ? 'inline' : 'hidden sm:inline'}>{t('profile.my_interactions', 'Mis Interacciones')}</span>
+              </span>
+              {profileTab === 'interactions' && (
+                <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-[#eab308]" />
+              )}
             </button>
 
+            {/* Sub-tab: Suscripciones */}
             <button
               type="button"
               onClick={() => setProfileTab('subscriptions')}
               title="Suscripciones"
-              className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`relative py-1.5 px-2.5 sm:px-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap ${
                 profileTab === 'subscriptions'
-                  ? 'bg-zinc-800 text-white font-extrabold px-3'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 px-2.5 sm:px-3'
+                  ? 'text-white font-extrabold'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
               }`}
             >
-              <Bell className="w-3.5 h-3.5 flex-shrink-0" />
-              <div className="relative flex items-center justify-center">
+              <span className="flex items-center gap-1.5">
+                <Bell className="w-3.5 h-3.5 flex-shrink-0 text-amber-400" />
                 <span className={profileTab === 'subscriptions' ? 'inline' : 'hidden sm:inline'}>{t('profile.subscriptions', 'Suscripciones')}</span>
                 {(profSubscriptions.length > 0 || studentSubscriptions.length > 0) && (
                   <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
                     {profSubscriptions.length + studentSubscriptions.length}
                   </span>
                 )}
-              </div>
+              </span>
+              {profileTab === 'subscriptions' && (
+                <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-[#eab308]" />
+              )}
             </button>
           </div>
         )}
@@ -2839,58 +2855,70 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
               {/* 3 Subtags solicitadas: Seguidos, Fans y Calificaciones */}
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-full pb-1">
+                {/* Seguidos — color: sky/celeste */}
                 <button
                   type="button"
                   onClick={() => setInteractionFilter('knows')}
-                  className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`relative px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     interactionFilter === 'knows'
-                      ? 'bg-blue-600 text-white font-extrabold shadow-[0_0_15px_rgba(59,130,246,0.35)] ring-1 ring-blue-400'
-                      : 'bg-[#121212] text-blue-400 hover:text-blue-300 border border-blue-500/20 hover:bg-blue-950/20'
+                      ? 'text-sky-300 font-extrabold'
+                      : 'text-sky-400/70 hover:text-sky-300 bg-[#121212] border border-sky-500/20 hover:bg-sky-950/20'
                   }`}
                 >
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span className={interactionFilter === 'knows' ? 'inline' : 'hidden sm:inline'}>Seguidos</span>
-                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
-                    interactionFilter === 'knows' ? 'bg-black text-blue-300' : 'bg-blue-500/20 text-blue-300'
-                  }`}>
-                    {interactions.filter(i => i.type === 'knows').length}
+                  <span className="flex items-center gap-2">
+                    <UserCheck className="w-3.5 h-3.5 text-sky-400" />
+                    <span className={interactionFilter === 'knows' ? 'inline' : 'hidden sm:inline'}>Seguidos</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-sky-500/20 text-sky-300">
+                      {interactions.filter(i => i.type === 'knows').length}
+                    </span>
                   </span>
+                  {interactionFilter === 'knows' && (
+                    <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-sky-400" />
+                  )}
                 </button>
 
+                {/* Fans — color: rosado/pink */}
                 <button
                   type="button"
                   onClick={() => setInteractionFilter('fans')}
-                  className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`relative px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     interactionFilter === 'fans'
-                      ? 'bg-pink-600 text-white font-extrabold shadow-[0_0_15px_rgba(236,72,153,0.35)] ring-1 ring-pink-400'
-                      : 'bg-[#121212] text-pink-400 hover:text-pink-300 border border-pink-500/20 hover:bg-pink-950/20'
+                      ? 'text-pink-300 font-extrabold'
+                      : 'text-pink-400/70 hover:text-pink-300 bg-[#121212] border border-pink-500/20 hover:bg-pink-950/20'
                   }`}
                 >
-                  <Heart className="w-3.5 h-3.5 fill-current" />
-                  <span className={interactionFilter === 'fans' ? 'inline' : 'hidden sm:inline'}>Fans</span>
-                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
-                    interactionFilter === 'fans' ? 'bg-black text-pink-300' : 'bg-pink-500/20 text-pink-300'
-                  }`}>
-                    {interactions.filter(i => i.type === 'fans').length}
+                  <span className="flex items-center gap-2">
+                    <Heart className="w-3.5 h-3.5 text-pink-400 fill-pink-400" />
+                    <span className={interactionFilter === 'fans' ? 'inline' : 'hidden sm:inline'}>Fans</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-pink-500/20 text-pink-300">
+                      {interactions.filter(i => i.type === 'fans').length}
+                    </span>
                   </span>
+                  {interactionFilter === 'fans' && (
+                    <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-pink-400" />
+                  )}
                 </button>
 
+                {/* Calificaciones — color: amber/yellow */}
                 <button
                   type="button"
                   onClick={() => setInteractionFilter('ratings')}
-                  className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                  className={`relative px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     interactionFilter === 'ratings'
-                      ? 'bg-[#eab308] text-black font-extrabold shadow-[0_0_15px_rgba(234,179,8,0.35)] ring-1 ring-amber-300'
-                      : 'bg-[#121212] text-[#eab308] hover:text-amber-300 border border-[#eab308]/20 hover:bg-amber-950/20'
+                      ? 'text-[#facc15] font-extrabold'
+                      : 'text-[#eab308]/70 hover:text-[#facc15] bg-[#121212] border border-[#eab308]/20 hover:bg-amber-950/20'
                   }`}
                 >
-                  <Star className="w-3.5 h-3.5 fill-current" />
-                  <span className={interactionFilter === 'ratings' ? 'inline' : 'hidden sm:inline'}>Calificaciones</span>
-                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
-                    interactionFilter === 'ratings' ? 'bg-black text-[#eab308]' : 'bg-amber-500/20 text-amber-300'
-                  }`}>
-                    {interactions.filter(i => i.type === 'ratings').length}
+                  <span className="flex items-center gap-2">
+                    <Star className="w-3.5 h-3.5 text-[#facc15] fill-[#facc15]" />
+                    <span className={interactionFilter === 'ratings' ? 'inline' : 'hidden sm:inline'}>Calificaciones</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
+                      {interactions.filter(i => i.type === 'ratings').length}
+                    </span>
                   </span>
+                  {interactionFilter === 'ratings' && (
+                    <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-[#facc15]" />
+                  )}
                 </button>
               </div>
 
