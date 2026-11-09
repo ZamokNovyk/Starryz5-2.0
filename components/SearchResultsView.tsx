@@ -254,6 +254,8 @@ export default function SearchResultsView({
     }
   };
 
+  const displayResults = allData.filter(i => filter === 'todos' || i.typeKey === filter);
+
   return (
     <div className="max-w-5xl mx-auto px-6 py-12 space-y-8 animate-in fade-in duration-300">
       
@@ -423,7 +425,7 @@ export default function SearchResultsView({
           
           /* ===== 1. VISTA EN LISTA ===== */
           <div className="space-y-2.5 animate-in fade-in duration-200">
-            {allData.filter(i => filter === 'todos' || i.typeKey === filter).map((item) => {
+            {displayResults.map((item) => {
               const Icon = getCategoryIcon(item.category);
               const badgeClass = getCategoryBadgeClass(item.category);
 
@@ -477,7 +479,7 @@ export default function SearchResultsView({
 
           /* ===== 2. VISTA EN MOSAICO (GRID) ===== */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-200">
-            {allData.filter(i => filter === 'todos' || i.typeKey === filter).map((item) => {
+            {displayResults.map((item) => {
               const Icon = getCategoryIcon(item.category);
               const badgeClass = getCategoryBadgeClass(item.category);
 

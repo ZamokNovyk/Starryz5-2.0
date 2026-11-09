@@ -129,20 +129,28 @@ export async function toggleUserCrush(
 
     if (existing) {
       // Quitar crush (Eliminar fila)
-      await supabase
+      const { error: delErr } = await supabase
         .from('users_crushes')
         .delete()
         .eq('id', existing.id);
 
+      if (delErr) {
+        console.error('Error al quitar crush en users_crushes:', delErr);
+      }
+
       hasCrushed = false;
     } else {
       // Agregar crush (Insertar fila)
-      await supabase
+      const { error: insErr } = await supabase
         .from('users_crushes')
         .insert({
           target_user_id: targetUserId,
           voter_uid: voterUid
         });
+
+      if (insErr) {
+        console.error('Error al insertar crush en users_crushes:', insErr);
+      }
 
       hasCrushed = true;
     }

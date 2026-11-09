@@ -172,10 +172,14 @@ export async function toggleUserActitudVote(
     if (existing) {
       if (existing.attitude_type === requestedType) {
         // Clic en el mismo voto -> QUITAR VOTO (Desvotar)
-        await supabase
+        const { error: delErr } = await supabase
           .from('users_actitud')
           .delete()
           .eq('id', existing.id);
+
+        if (delErr) {
+          console.error('Error al eliminar voto en users_actitud:', delErr);
+        }
 
         activeVote = null;
       } else {
@@ -186,25 +190,33 @@ export async function toggleUserActitudVote(
           .eq('id', existing.id);
 
         if (updateErr) {
+          console.warn('Fallo al actualizar users_actitud, reintentando con reemplazo:', updateErr);
           await supabase.from('users_actitud').delete().eq('id', existing.id);
-          await supabase.from('users_actitud').insert({
+          const { error: insErr } = await supabase.from('users_actitud').insert({
             target_user_id: targetUserId,
             voter_uid: voterUid,
             attitude_type: requestedType
           });
+          if (insErr) {
+            console.error('Error al insertar voto de actitud tras reemplazo:', insErr);
+          }
         }
 
         activeVote = requestedType;
       }
     } else {
       // No existe voto previo -> INSERTAR
-      await supabase
+      const { error: insErr } = await supabase
         .from('users_actitud')
         .insert({
           target_user_id: targetUserId,
           voter_uid: voterUid,
           attitude_type: requestedType
         });
+
+      if (insErr) {
+        console.error('Error al insertar voto en users_actitud:', insErr);
+      }
 
       activeVote = requestedType;
     }
