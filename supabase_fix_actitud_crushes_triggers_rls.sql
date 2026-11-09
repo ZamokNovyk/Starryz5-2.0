@@ -219,3 +219,4 @@ SET
 -- 9. RECARGAR CACHÉ DE ESQUEMA EN POSTGREST (ELIMINA 404 INMEDIATAMENTE)
 -- ----------------------------------------------------------------------------
 NOTIFY pgrst, 'reload schema';
+
