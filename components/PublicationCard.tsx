@@ -26,7 +26,9 @@ import {
   Globe,
   Flag,
   ChevronDown,
-  MoreVertical
+  MoreVertical,
+  Reply,
+  CornerDownRight
 } from 'lucide-react';
 import { 
   UserPublication, 
@@ -101,6 +103,10 @@ export default function PublicationCard({
   const [submittingReview, setSubmittingReview] = useState(false);
   const [commentsCount, setCommentsCount] = useState<number>(publication.comments_count || 0);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  // Estado para responder a un comentario específico ("X respondió a X")
+  const [replyingTo, setReplyingTo] = useState<{ id: string; userName: string; userUid: string } | null>(null);
+  const commentInputRef = useRef<HTMLInputElement>(null);
 
   // Estados de edición de comentario/reseña
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
@@ -335,6 +341,10 @@ export default function PublicationCard({
         userUid: effectiveUserId,
         stars: chosenStars,
         comment: trimmed || null,
+        parentId: replyingTo?.id || null,
+        replyToUserName: replyingTo?.userName || null,
+        replyToUserUid: replyingTo?.userUid || null,
+        publicationAuthorUid: publication.user_id,
         authorInfo: {
           displayName: user?.displayName || 'Usuario Starryz',
           avatarUrl: user?.photoURL || null,
@@ -349,7 +359,7 @@ export default function PublicationCard({
             if (exists) {
               return prev.map((r) => ((r.id || (r as any).uuid) === revId ? res.newReview! : r));
             }
-            return [res.newReview!, ...prev];
+            return [...prev, res.newReview!];
           });
 
           if (res.newReview.stars) {
@@ -368,7 +378,14 @@ export default function PublicationCard({
           setCommentsCount(res.comments_count);
         }
         setCommentText('');
-        setFeedbackMsg(isReseña ? '¡Reseña guardada con éxito!' : '¡Comentario publicado con éxito!');
+        setReplyingTo(null);
+        setFeedbackMsg(
+          replyingTo
+            ? `¡Respuesta a @${replyingTo.userName} enviada!`
+            : isReseña
+            ? '¡Reseña guardada con éxito!'
+            : '¡Comentario publicado con éxito!'
+        );
         setTimeout(() => setFeedbackMsg(null), 3000);
       } else if (res.error) {
         alert(res.error);
@@ -378,6 +395,21 @@ export default function PublicationCard({
     } finally {
       setSubmittingReview(false);
     }
+  };
+
+  // Iniciar respuesta a un comentario o respuesta
+  const handleStartReply = (targetComment: PublicationReviewComment) => {
+    // Si ya es una respuesta a un padre, ligar al padre para mantener el hilo
+    const rootParentId = targetComment.parent_id || targetComment.id;
+    setReplyingTo({
+      id: rootParentId,
+      userName: targetComment.user_display_name || 'Compañero',
+      userUid: targetComment.user_uid,
+    });
+    setCommentMode('comentario');
+    setTimeout(() => {
+      commentInputRef.current?.focus();
+    }, 100);
   };
 
   // Iniciar edición de un comentario o reseña
@@ -1047,13 +1079,34 @@ export default function PublicationCard({
                 </div>
               ) : (
                 /* MODO COMENTARIO: Múltiples comentarios públicos de texto */
-                <div className="space-y-1">
+                <div className="space-y-1.5">
+                  {replyingTo && (
+                    <div className="flex items-center justify-between bg-blue-500/10 border border-blue-500/30 px-3 py-1.5 rounded-xl text-xs text-blue-300 animate-in fade-in">
+                      <div className="flex items-center gap-1.5">
+                        <Reply className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Respondiendo a <strong className="text-white font-bold">@{replyingTo.userName}</strong></span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReplyingTo(null)}
+                        className="p-1 hover:bg-blue-500/20 rounded-full text-blue-400 hover:text-white transition-colors cursor-pointer"
+                        title="Cancelar respuesta"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <input
+                      ref={commentInputRef}
                       type="text"
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
-                      placeholder="Escribe un comentario público (puedes comentar varias veces)..."
+                      placeholder={
+                        replyingTo
+                          ? `Responde a @${replyingTo.userName}...`
+                          : "Escribe un comentario público (puedes comentar varias veces)..."
+                      }
                       maxLength={400}
                       className="flex-1 bg-[#14151b] border border-zinc-700/80 focus:border-blue-400 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder-zinc-500 outline-none transition-colors"
                     />
@@ -1067,7 +1120,7 @@ export default function PublicationCard({
                       ) : (
                         <Send className="w-3.5 h-3.5" />
                       )}
-                      <span>Comentar</span>
+                      <span>{replyingTo ? 'Responder' : 'Comentar'}</span>
                     </button>
                   </div>
                 </div>
@@ -1130,146 +1183,256 @@ export default function PublicationCard({
                 );
               }
 
-              return displayed.map((rev) => {
+              // Organizar en comentarios raíz y respuestas hijas
+              const rootComments = displayed.filter((c) => !c.parent_id);
+              const repliesByParent = new Map<string, PublicationReviewComment[]>();
+              safeList.forEach((c) => {
+                if (c.parent_id) {
+                  const arr = repliesByParent.get(c.parent_id) || [];
+                  arr.push(c);
+                  repliesByParent.set(c.parent_id, arr);
+                }
+              });
+
+              // Si en "mi_interacción" hay respuestas cuyo padre no es mío, mostrarlas también
+              const orphanReplies = displayed.filter(
+                (c) => c.parent_id && !rootComments.some((root) => (root.id || (root as any).uuid) === c.parent_id)
+              );
+
+              const allDisplayRoots = [...rootComments, ...orphanReplies];
+
+              return allDisplayRoots.map((rev) => {
                 const reviewKey = rev.id || (rev as any).uuid;
                 const isMyReview = Boolean(effectiveUserId && rev.user_uid === effectiveUserId);
                 const isEditingThis = editingReviewId === reviewKey;
+                const childReplies = repliesByParent.get(reviewKey) || [];
 
                 return (
-                  <div
-                    key={reviewKey}
-                    className="bg-[#14151b] border border-zinc-800/60 rounded-xl p-3 space-y-2 shadow-sm transition-colors hover:border-zinc-700/60"
-                  >
-                    {/* Header del comentario: autor, estrellas, fecha, botones editar/borrar */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {rev.user_avatar_url ? (
-                          <img
-                            src={rev.user_avatar_url}
-                            alt="Usuario"
-                            className="w-6 h-6 rounded-full object-cover border border-zinc-700 flex-shrink-0"
-                          />
-                        ) : (
-                          <div className="w-6 h-6 rounded-full bg-zinc-800 text-zinc-300 text-[10px] font-black flex items-center justify-center uppercase flex-shrink-0">
-                            {(rev.user_display_name || 'U').charAt(0)}
-                          </div>
-                        )}
-                        <span className="text-xs font-bold text-white truncate max-w-[140px] sm:max-w-[200px]">
-                          {rev.user_display_name || 'Compañero'}
-                        </span>
-                        {isMyReview && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono font-bold">
-                            Tú
+                  <div key={reviewKey} className="space-y-2">
+                    {/* Tarjeta del comentario raíz */}
+                    <div className="bg-[#14151b] border border-zinc-800/60 rounded-xl p-3 space-y-2 shadow-sm transition-colors hover:border-zinc-700/60">
+                      {/* Header del comentario: autor, estrellas, fecha, responder, editar/borrar */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {rev.user_avatar_url ? (
+                            <img
+                              src={rev.user_avatar_url}
+                              alt="Usuario"
+                              className="w-6 h-6 rounded-full object-cover border border-zinc-700 flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-zinc-800 text-zinc-300 text-[10px] font-black flex items-center justify-center uppercase flex-shrink-0">
+                              {(rev.user_display_name || 'U').charAt(0)}
+                            </div>
+                          )}
+                          <span className="text-xs font-bold text-white truncate max-w-[130px] sm:max-w-[180px]">
+                            {rev.user_display_name || 'Compañero'}
                           </span>
-                        )}
-                      </div>
+                          {rev.parent_id && rev.reply_to_user_name && (
+                            <span className="text-[10px] text-amber-400 font-medium truncate max-w-[120px]">
+                              ↳ respondió a @{rev.reply_to_user_name}
+                            </span>
+                          )}
+                          {isMyReview && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono font-bold">
+                              Tú
+                            </span>
+                          )}
+                        </div>
 
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {rev.stars && !isEditingThis && (
-                          <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">
-                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                            <span>{rev.stars}</span>
-                          </div>
-                        )}
-                        <span className="text-[10px] text-zinc-500">
-                          {formatTimeAgo(rev.created_at)}
-                        </span>
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                          {rev.stars && !isEditingThis && (
+                            <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">
+                              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                              <span>{rev.stars}</span>
+                            </div>
+                          )}
+                          <span className="text-[10px] text-zinc-500">
+                            {formatTimeAgo(rev.created_at)}
+                          </span>
 
-                        {/* Botones de Editar y Borrar para el autor */}
-                        {isMyReview && !isEditingThis && (
-                          <div className="flex items-center gap-1 ml-1 border-l border-zinc-800 pl-1.5">
-                            {/* Solo los comentarios puros (sin estrellas) pueden editarse aquí; las reseñas se actualizan desde su panel */}
-                            {!rev.stars && (
-                              <button
-                                type="button"
-                                onClick={() => handleStartEdit(rev)}
-                                className="p-1 text-zinc-400 hover:text-amber-400 transition-colors rounded-md hover:bg-zinc-800 cursor-pointer"
-                                title="Editar comentario"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                          {/* Botón Responder */}
+                          {!isEditingThis && (
                             <button
                               type="button"
-                              onClick={() => handleDeleteComment(reviewKey, Boolean(rev.stars))}
-                              className="p-1 text-zinc-400 hover:text-red-400 transition-colors rounded-md hover:bg-zinc-800 cursor-pointer"
-                              title={rev.stars ? "Eliminar reseña" : "Eliminar comentario"}
+                              onClick={() => handleStartReply(rev)}
+                              className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Responder a este comentario"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Reply className="w-2.5 h-2.5 text-blue-400" />
+                              <span>Responder</span>
                             </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                          )}
 
-                    {/* MODO EDICIÓN */}
-                    {isEditingThis ? (
-                      <div className="space-y-2 pt-1 border-t border-zinc-800/60 animate-in fade-in duration-150">
-                        {rev.stars ? (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
-                              <Star className="w-3 h-3 text-[#facc15] fill-[#facc15]" />
-                              <span>Calificación de tu reseña:</span>
-                            </span>
-                            <div className="flex items-center gap-1 bg-[#1a1708] border border-[#524515] px-2 py-0.5 rounded-lg select-none">
-                              {[1, 2, 3, 4, 5].map((star) => (
-                                <Star
-                                  key={star}
-                                  className={`w-3.5 h-3.5 ${
-                                    star <= (rev.stars || 0)
-                                      ? 'fill-[#facc15] text-[#facc15]'
-                                      : 'text-zinc-600'
-                                  }`}
-                                />
-                              ))}
-                              <span className="text-[10px] font-bold text-[#facc15] ml-1">
-                                ({rev.stars}★)
-                              </span>
+                          {/* Botones de Editar y Borrar para el autor */}
+                          {isMyReview && !isEditingThis && (
+                            <div className="flex items-center gap-1 ml-0.5 border-l border-zinc-800 pl-1.5">
+                              {!rev.stars && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEdit(rev)}
+                                  className="p-1 text-zinc-400 hover:text-amber-400 transition-colors rounded-md hover:bg-zinc-800 cursor-pointer"
+                                  title="Editar comentario"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteComment(reviewKey, Boolean(rev.stars))}
+                                className="p-1 text-zinc-400 hover:text-red-400 transition-colors rounded-md hover:bg-zinc-800 cursor-pointer"
+                                title={rev.stars ? "Eliminar reseña" : "Eliminar comentario"}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
-                          </div>
-                        ) : null}
-
-                        {/* Texto de edición */}
-                        <textarea
-                          rows={2}
-                          value={editingCommentText}
-                          onChange={(e) => setEditingCommentText(e.target.value)}
-                          maxLength={400}
-                          className="w-full bg-[#0d0e12] border border-zinc-700/80 focus:border-amber-400 rounded-lg p-2 text-xs text-white placeholder-zinc-500 outline-none resize-none leading-relaxed"
-                        />
-
-                        {/* Botones Guardar / Cancelar */}
-                        <div className="flex items-center justify-end gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={handleCancelEdit}
-                            disabled={savingEdit}
-                            className="px-2.5 py-1 rounded-lg text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSaveEdit(reviewKey)}
-                            disabled={savingEdit || (!editingCommentText.trim() && editingStars === null)}
-                            className="px-3 py-1 rounded-lg bg-[#eab308] hover:bg-yellow-400 text-black font-black text-[11px] flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-40"
-                          >
-                            {savingEdit ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Check className="w-3 h-3" />
-                            )}
-                            <span>Guardar</span>
-                          </button>
+                          )}
                         </div>
                       </div>
-                    ) : (
-                      /* TEXTO NORMAL DEL COMENTARIO */
-                      rev.comment && (
-                        <p className="text-xs text-zinc-300 leading-relaxed pl-8">
-                          {rev.comment}
-                        </p>
-                      )
+
+                      {/* MODO EDICIÓN */}
+                      {isEditingThis ? (
+                        <div className="space-y-2 pt-1 border-t border-zinc-800/60 animate-in fade-in duration-150">
+                          {rev.stars ? (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+                                <Star className="w-3 h-3 text-[#facc15] fill-[#facc15]" />
+                                <span>Calificación de tu reseña:</span>
+                              </span>
+                              <div className="flex items-center gap-1 bg-[#1a1708] border border-[#524515] px-2 py-0.5 rounded-lg select-none">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <Star
+                                    key={star}
+                                    className={`w-3.5 h-3.5 ${
+                                      star <= (rev.stars || 0)
+                                        ? 'fill-[#facc15] text-[#facc15]'
+                                        : 'text-zinc-600'
+                                    }`}
+                                  />
+                                ))}
+                                <span className="text-[10px] font-bold text-[#facc15] ml-1">
+                                  ({rev.stars}★)
+                                </span>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <textarea
+                            rows={2}
+                            value={editingCommentText}
+                            onChange={(e) => setEditingCommentText(e.target.value)}
+                            maxLength={400}
+                            className="w-full bg-[#0d0e12] border border-zinc-700/80 focus:border-amber-400 rounded-lg p-2 text-xs text-white placeholder-zinc-500 outline-none resize-none leading-relaxed"
+                          />
+
+                          <div className="flex items-center justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleCancelEdit}
+                              disabled={savingEdit}
+                              className="px-2.5 py-1 rounded-lg text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(reviewKey)}
+                              disabled={savingEdit || (!editingCommentText.trim() && editingStars === null)}
+                              className="px-3 py-1 rounded-lg bg-[#eab308] hover:bg-yellow-400 text-black font-black text-[11px] flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-40"
+                            >
+                              {savingEdit ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Check className="w-3 h-3" />
+                              )}
+                              <span>Guardar</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* TEXTO NORMAL DEL COMENTARIO */
+                        rev.comment && (
+                          <p className="text-xs text-zinc-300 leading-relaxed pl-8">
+                            {rev.comment}
+                          </p>
+                        )
+                      )}
+                    </div>
+
+                    {/* HILO DE RESPUESTAS AL COMENTARIO ("X respondió a X") */}
+                    {childReplies.length > 0 && (
+                      <div className="ml-5 sm:ml-7 border-l-2 border-zinc-800 pl-3 space-y-2 pt-1">
+                        {childReplies.map((reply) => {
+                          const replyKey = reply.id || (reply as any).uuid;
+                          const isMyReply = Boolean(effectiveUserId && reply.user_uid === effectiveUserId);
+                          return (
+                            <div
+                              key={replyKey}
+                              className="bg-[#101116] border border-zinc-800/50 rounded-xl p-2.5 space-y-1.5 shadow-sm transition-colors hover:border-zinc-700/60"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                                  {reply.user_avatar_url ? (
+                                    <img
+                                      src={reply.user_avatar_url}
+                                      alt="Usuario"
+                                      className="w-5 h-5 rounded-full object-cover border border-zinc-700 flex-shrink-0"
+                                    />
+                                  ) : (
+                                    <div className="w-5 h-5 rounded-full bg-zinc-800 text-zinc-300 text-[9px] font-black flex items-center justify-center uppercase flex-shrink-0">
+                                      {(reply.user_display_name || 'U').charAt(0)}
+                                    </div>
+                                  )}
+                                  <span className="text-[11px] font-bold text-white truncate max-w-[120px]">
+                                    {reply.user_display_name || 'Compañero'}
+                                  </span>
+                                  <span className="text-[10px] text-zinc-400 flex items-center gap-1">
+                                    <CornerDownRight className="w-2.5 h-2.5 text-zinc-500" />
+                                    <span>respondió a</span>
+                                    <strong className="text-amber-400 font-bold">
+                                      @{reply.reply_to_user_name || rev.user_display_name || 'Compañero'}
+                                    </strong>
+                                  </span>
+                                  {isMyReply && (
+                                    <span className="text-[8px] px-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono font-bold">
+                                      Tú
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  <span className="text-[9px] text-zinc-500">
+                                    {formatTimeAgo(reply.created_at)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartReply(reply)}
+                                    className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white flex items-center gap-0.5 transition-colors cursor-pointer"
+                                    title="Responder a esta persona"
+                                  >
+                                    <Reply className="w-2.5 h-2.5 text-blue-400" />
+                                    <span>Responder</span>
+                                  </button>
+                                  {isMyReply && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteComment(replyKey, false)}
+                                      className="p-1 text-zinc-400 hover:text-red-400 transition-colors rounded hover:bg-zinc-800 cursor-pointer"
+                                      title="Eliminar respuesta"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <p className="text-xs text-zinc-300 leading-relaxed pl-6">
+                                {reply.comment}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 );

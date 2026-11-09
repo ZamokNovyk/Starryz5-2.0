@@ -48,6 +48,7 @@ import { usePwaTabs } from '@/src/context/PwaTabsContext';
 import { useThemeCustomizer } from '@/src/context/ThemeCustomizerContext';
 import { usePageTransition, TRANSITIONS_LIST } from '@/src/context/PageTransitionContext';
 import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from '@/src/context/LanguageContext';
+import PublicationNotificationModal from './Modals/PublicationNotificationModal';
 
 interface NotificationItem {
   id: string;
@@ -128,6 +129,11 @@ export default function Header({
   const [modalReplyError, setModalReplyError] = useState<string | null>(null);
   const modalReplyInputRef = useRef<HTMLTextAreaElement>(null);
 
+  // States for Publication Notification Modal
+  const [showPubModal, setShowPubModal] = useState(false);
+  const [modalPubId, setModalPubId] = useState<string | null>(null);
+  const [modalPubCommentId, setModalPubCommentId] = useState<string | null>(null);
+
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   const fetchNotifications = async () => {
@@ -154,7 +160,36 @@ export default function Header({
 
     fetchNotifications();
 
-    // 1. Manejo en tiempo real vía Firebase Cloud Messaging (onMessage) - 0 Supabase Realtime
+    // 1. Manejo en tiempo real vía Supabase Realtime (tabla 'notifications')
+    const realtimeChannel = supabase
+      .channel(`user-notifications-${user.uid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_uid=eq.${user.uid}`
+        },
+        (payload) => {
+          const newNotif = payload.new as NotificationItem;
+
+          // Reproducir sonido en tiempo real noti.mp3
+          try {
+            const audio = new Audio('/sonidos/noti.mp3');
+            audio.volume = 0.7;
+            audio.play().catch(() => {});
+          } catch {}
+
+          setNotifications((prev) => {
+            if (prev.some(n => n.id === newNotif.id)) return prev;
+            return [newNotif, ...prev];
+          });
+        }
+      )
+      .subscribe();
+
+    // 2. Manejo en tiempo real vía Firebase Cloud Messaging (onMessage) cuando está en segundo plano o activa
     const handleFCMNotification = (e: any) => {
       const detail = e.detail;
       if (!detail) return;
@@ -163,12 +198,17 @@ export default function Header({
         id: detail.id || `fcm_${Date.now()}`,
         user_uid: user.uid,
         title: detail.title || 'Starryz 5',
-        content: detail.body || 'Tienes una nueva interacción',
-        type: detail.data?.type || 'interaction',
-        reference_id: detail.data?.reference_id || null,
+        body: detail.body || 'Tienes una nueva interacción',
+        link_url: detail.data?.link_url || detail.link_url || null,
         is_read: false,
         created_at: detail.created_at || new Date().toISOString()
       };
+
+      try {
+        const audio = new Audio('/sonidos/noti.mp3');
+        audio.volume = 0.7;
+        audio.play().catch(() => {});
+      } catch {}
 
       setNotifications((prev) => {
         if (prev.some(n => n.id === newNotif.id)) return prev;
@@ -184,6 +224,7 @@ export default function Header({
     window.addEventListener('starryz_fcm_notification', handleFCMNotification);
 
     return () => {
+      supabase.removeChannel(realtimeChannel);
       window.removeEventListener('starryz_fcm_notification', handleFCMNotification);
     };
   }, [user?.uid]);
@@ -426,15 +467,20 @@ export default function Header({
     }
   };
 
-  // Detectar automáticamente si la URL contiene show_confession o confession_id
+  // Detectar automáticamente si la URL contiene show_confession, show_publication, etc.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const urlParams = new URLSearchParams(window.location.search);
     const confessionId = urlParams.get('show_confession') || urlParams.get('confession_id');
+    const publicationId = urlParams.get('show_publication') || urlParams.get('publication_id');
     const commentId = urlParams.get('comment_id');
 
     if (confessionId) {
       loadConfessionDetails(confessionId, commentId);
+    } else if (publicationId) {
+      setModalPubId(publicationId);
+      setModalPubCommentId(commentId);
+      setShowPubModal(true);
     }
   }, []);
 
@@ -457,19 +503,33 @@ export default function Header({
     }
 
     let confessionId: string | null = null;
+    let pubId: string | null = null;
     let commentId: string | null = null;
+
     if (notif.link_url) {
       if (notif.link_url.includes('show_confession=')) {
         confessionId = notif.link_url.split('show_confession=')[1]?.split('&')[0] || null;
       } else if (notif.link_url.includes('confession_id=')) {
         confessionId = notif.link_url.split('confession_id=')[1]?.split('&')[0] || null;
       }
+
+      if (notif.link_url.includes('show_publication=')) {
+        pubId = notif.link_url.split('show_publication=')[1]?.split('&')[0] || null;
+      } else if (notif.link_url.includes('publication_id=')) {
+        pubId = notif.link_url.split('publication_id=')[1]?.split('&')[0] || null;
+      }
+
       if (notif.link_url.includes('comment_id=')) {
         commentId = notif.link_url.split('comment_id=')[1]?.split('&')[0] || null;
       }
     }
 
-    if (confessionId) {
+    if (pubId) {
+      // Abrir la ventana modal de notificación de la publicación con la interacción destacada
+      setModalPubId(pubId);
+      setModalPubCommentId(commentId);
+      setShowPubModal(true);
+    } else if (confessionId) {
       // Llevar al usuario a la página principal y abrir la ventana de la notificación
       if (onGoToHome) {
         onGoToHome();
@@ -1917,6 +1977,22 @@ export default function Header({
         isOpen={guidelinesModalOpen}
         onClose={() => setGuidelinesModalOpen(false)}
       />
+
+      {/* MODAL DE NOTIFICACIÓN DE PUBLICACIÓN (RESPUESTAS, COMENTARIOS Y RESEÑAS) */}
+      {showPubModal && modalPubId && (
+        <PublicationNotificationModal
+          isOpen={showPubModal}
+          onClose={() => {
+            setShowPubModal(false);
+            setModalPubId(null);
+            setModalPubCommentId(null);
+          }}
+          publicationId={modalPubId}
+          commentId={modalPubCommentId}
+          currentUser={user}
+          onNavigate={onNavigate}
+        />
+      )}
     </>
   );
 }

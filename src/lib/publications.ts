@@ -302,6 +302,9 @@ export interface PublicationReviewComment {
   user_uid: string;
   stars: number | null;
   comment: string | null;
+  raw_comment?: string | null;
+  parent_id?: string | null;
+  reply_to_user_name?: string | null;
   user_display_name?: string | null;
   user_username?: string | null;
   user_avatar_url?: string | null;
@@ -312,7 +315,44 @@ const REVIEWS_TABLE = 'user_publicaciones_reseñas+comentarios';
 const SAVED_TABLE = 'user_guardados';
 
 /**
- * Obtiene los comentarios y reseñas de una publicación ordenados del más reciente al más antiguo
+ * Serializa un comentario para almacenar de forma segura si es una respuesta en la columna 'comment'
+ */
+export function serializeComment(
+  text: string,
+  parentId?: string | null,
+  replyToUserName?: string | null
+): string {
+  const clean = (text || '').trim();
+  if (parentId) {
+    const safeUser = (replyToUserName || '').replace(/[\[\]:]/g, '').trim();
+    return `[[reply:${parentId}:${safeUser}]] ${clean}`;
+  }
+  return clean;
+}
+
+/**
+ * Deserializa un comentario para extraer parentId, nombre al que responde y el texto limpio
+ */
+export function parseCommentText(rawComment: string | null): {
+  parentId: string | null;
+  replyToUserName: string | null;
+  text: string;
+} {
+  if (!rawComment) return { parentId: null, replyToUserName: null, text: '' };
+  const match = rawComment.match(/^\[\[reply:([^:]+):(.*?)\]\]\s*([\s\S]*)$/);
+  if (match) {
+    return {
+      parentId: match[1] || null,
+      replyToUserName: match[2]?.trim() || null,
+      text: match[3] || '',
+    };
+  }
+  return { parentId: null, replyToUserName: null, text: rawComment };
+}
+
+/**
+ * Obtiene los comentarios y reseñas de una publicación ordenados del más reciente al más antiguo,
+ * deserializando las respuestas anidadas automáticamente.
  */
 export async function getPublicationReviews(
   publicationId: string
@@ -331,10 +371,17 @@ export async function getPublicationReviews(
       return [];
     }
 
-    const list = (data || []).map((item: any) => ({
-      ...item,
-      id: item.id || item.uuid,
-    }));
+    const list = (data || []).map((item: any) => {
+      const parsed = parseCommentText(item.comment);
+      return {
+        ...item,
+        id: item.id || item.uuid,
+        comment: parsed.text,
+        raw_comment: item.comment,
+        parent_id: parsed.parentId,
+        reply_to_user_name: parsed.replyToUserName,
+      };
+    });
 
     return list as PublicationReviewComment[];
   } catch (err) {
@@ -587,6 +634,10 @@ export async function submitPublicationReview(params: {
   userUid: string;
   stars?: number | null;
   comment?: string | null;
+  parentId?: string | null;
+  replyToUserName?: string | null;
+  replyToUserUid?: string | null;
+  publicationAuthorUid?: string | null;
   authorInfo?: {
     displayName?: string | null;
     username?: string | null;
@@ -600,16 +651,27 @@ export async function submitPublicationReview(params: {
   comments_count?: number;
   error?: string;
 }> {
-  const { publicationId, userUid, stars, comment, authorInfo } = params;
+  const {
+    publicationId,
+    userUid,
+    stars,
+    comment,
+    parentId,
+    replyToUserName,
+    replyToUserUid,
+    publicationAuthorUid,
+    authorInfo,
+  } = params;
 
   if (!publicationId || !userUid) {
     return { success: false, error: 'Debes iniciar sesión para calificar o comentar.' };
   }
 
   const cleanStars = typeof stars === 'number' && stars >= 1 && stars <= 5 ? Math.round(stars) : null;
-  const cleanComment = (comment || '').trim() || null;
+  const rawCleanComment = (comment || '').trim();
+  const serializedComment = rawCleanComment ? serializeComment(rawCleanComment, parentId, replyToUserName) : null;
 
-  if (cleanStars === null && !cleanComment) {
+  if (cleanStars === null && !serializedComment) {
     return { success: false, error: 'Debes ingresar una calificación de estrellas o un comentario.' };
   }
 
@@ -630,7 +692,7 @@ export async function submitPublicationReview(params: {
 
       const updatePayload = {
         stars: cleanStars,
-        comment: cleanComment,
+        comment: serializedComment,
         user_display_name: authorInfo?.displayName || existingRating?.user_display_name || 'Usuario',
         user_username: authorInfo?.username || existingRating?.user_username || null,
         user_avatar_url: authorInfo?.avatarUrl || existingRating?.user_avatar_url || null,
@@ -700,7 +762,7 @@ export async function submitPublicationReview(params: {
           publication_id: publicationId,
           user_uid: userUid,
           stars: null,
-          comment: cleanComment,
+          comment: serializedComment,
           user_display_name: authorInfo?.displayName || 'Usuario',
           user_username: authorInfo?.username || null,
           user_avatar_url: authorInfo?.avatarUrl || null,
@@ -715,9 +777,85 @@ export async function submitPublicationReview(params: {
 
     const metrics = await recalculatePublicationMetrics(publicationId);
 
+    // Parsear el comentario resultante para entregarlo al cliente
+    const parsed = parseCommentText(insertedOrUpdated?.comment || null);
+    const formattedReview: PublicationReviewComment = {
+      ...insertedOrUpdated,
+      id: insertedOrUpdated?.id || insertedOrUpdated?.uuid,
+      comment: parsed.text,
+      raw_comment: insertedOrUpdated?.comment,
+      parent_id: parsed.parentId,
+      reply_to_user_name: parsed.replyToUserName,
+    };
+
+    // DISPARO DE NOTIFICACIONES:
+    // 1. Notificación a quien se le respondió
+    const commentSnippet = rawCleanComment.length > 45 ? `${rawCleanComment.substring(0, 45)}...` : rawCleanComment;
+    const senderName = authorInfo?.displayName || 'Usuario';
+    const notifLinkId = formattedReview.id;
+    const notifUrl = `/?show_publication=${publicationId}&comment_id=${notifLinkId}`;
+
+    if (parentId && replyToUserUid && replyToUserUid !== userUid) {
+      try {
+        const replyBody = `[${senderName}] respondió a tu comentario: "${commentSnippet}"`;
+        const { error: notiErr } = await supabase.from('notifications').insert([{
+          user_uid: replyToUserUid,
+          title: senderName,
+          body: replyBody,
+          link_url: notifUrl,
+          is_read: false,
+        }]);
+
+        if (!notiErr) {
+          supabase.functions.invoke('rapid-processor', {
+            body: {
+              user_uid: replyToUserUid,
+              title: senderName,
+              body: replyBody,
+              link_url: notifUrl,
+              publication_id: publicationId,
+              comment_id: notifLinkId,
+            }
+          }).catch(() => {});
+        }
+      } catch (notifEx) {
+        console.warn('[Publications] Aviso al disparar notificación de respuesta:', notifEx);
+      }
+    } else if (!parentId && publicationAuthorUid && publicationAuthorUid !== userUid) {
+      // 2. Notificación al dueño de la publicación (si es comentario o reseña principal)
+      try {
+        const bodyText = cleanStars
+          ? `[${senderName}] calificó tu publicación con ${cleanStars}★: "${commentSnippet}"`
+          : `[${senderName}] comentó en tu publicación: "${commentSnippet}"`;
+
+        const { error: notiErr } = await supabase.from('notifications').insert([{
+          user_uid: publicationAuthorUid,
+          title: senderName,
+          body: bodyText,
+          link_url: notifUrl,
+          is_read: false,
+        }]);
+
+        if (!notiErr) {
+          supabase.functions.invoke('rapid-processor', {
+            body: {
+              user_uid: publicationAuthorUid,
+              title: senderName,
+              body: bodyText,
+              link_url: notifUrl,
+              publication_id: publicationId,
+              comment_id: notifLinkId,
+            }
+          }).catch(() => {});
+        }
+      } catch (notifEx) {
+        console.warn('[Publications] Aviso al disparar notificación de publicación:', notifEx);
+      }
+    }
+
     return {
       success: true,
-      newReview: insertedOrUpdated as PublicationReviewComment,
+      newReview: formattedReview,
       rating_avg: metrics.rating_avg,
       total_votes: metrics.total_votes,
       comments_count: metrics.comments_count,
@@ -1050,4 +1188,54 @@ export function updateOpenGraphMeta(params: {
   setMeta('name', 'twitter:title', title);
   setMeta('name', 'twitter:description', description);
   setMeta('name', 'twitter:image', imageUrl);
+}
+
+/**
+ * Obtiene una publicación por su ID e incluye los datos de su autor
+ */
+export async function getPublicationById(publicationId: string): Promise<UserPublication | null> {
+  if (!publicationId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('user-publications')
+      .select('*')
+      .eq('id', publicationId)
+      .maybeSingle();
+
+    if (error || !data) {
+      console.warn('[Publications] No se pudo encontrar la publicación:', error?.message);
+      return null;
+    }
+
+    const pub = data as UserPublication;
+
+    // Enriquecer con datos del autor de la tabla 'users'
+    if (pub.user_id) {
+      try {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('id, display_name, gender, country_code, score, photo_url')
+          .eq('id', pub.user_id)
+          .maybeSingle();
+
+        if (userData) {
+          pub.author_data = {
+            display_name: userData.display_name,
+            gender: userData.gender,
+            country_code: userData.country_code,
+            score: userData.score,
+            photo_url: userData.photo_url,
+          };
+          pub.user_display_name = userData.display_name || pub.user_display_name;
+          pub.user_avatar_url = userData.photo_url || pub.user_avatar_url;
+        }
+      } catch {}
+    }
+
+    return pub;
+  } catch (err) {
+    console.error('[Publications] Excepción al obtener publicación por ID:', err);
+    return null;
+  }
 }
