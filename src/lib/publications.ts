@@ -308,6 +308,8 @@ export interface PublicationReviewComment {
   user_display_name?: string | null;
   user_username?: string | null;
   user_avatar_url?: string | null;
+  Answers?: number | null;
+  answers?: number | null;
   created_at: string;
 }
 
@@ -380,6 +382,8 @@ export async function getPublicationReviews(
         raw_comment: item.comment,
         parent_id: parsed.parentId,
         reply_to_user_name: parsed.replyToUserName,
+        Answers: typeof item.Answers === 'number' ? item.Answers : (typeof item.answers === 'number' ? item.answers : 0),
+        answers: typeof item.Answers === 'number' ? item.Answers : (typeof item.answers === 'number' ? item.answers : 0),
       };
     });
 
@@ -775,6 +779,27 @@ export async function submitPublicationReview(params: {
       }
     }
 
+    // Si es una respuesta a un comentario padre, incrementar Answers (+1)
+    if (parentId && insertedOrUpdated) {
+      try {
+        const { data: parentRow } = await supabase
+          .from(REVIEWS_TABLE)
+          .select('id, Answers, answers')
+          .eq('id', parentId)
+          .maybeSingle();
+
+        if (parentRow) {
+          const currentCount = Number(parentRow.Answers ?? parentRow.answers ?? 0);
+          await supabase
+            .from(REVIEWS_TABLE)
+            .update({ Answers: currentCount + 1 })
+            .eq('id', parentId);
+        }
+      } catch (eAns) {
+        console.warn('[Publications] Aviso al incrementar Answers en comentario padre:', eAns);
+      }
+    }
+
     const metrics = await recalculatePublicationMetrics(publicationId);
 
     // Parsear el comentario resultante para entregarlo al cliente
@@ -965,7 +990,7 @@ export async function deletePublicationReviewComment(
     // .eq('user_uid', userUid) porque sin RLS el anon-key permite omitirlo.
     const { data: existing, error: fetchErr } = await supabase
       .from(REVIEWS_TABLE)
-      .select('id, user_uid')
+      .select('id, user_uid, comment')
       .eq('id', reviewId)
       .maybeSingle();
 
@@ -976,11 +1001,50 @@ export async function deletePublicationReviewComment(
     }
     // ─────────────────────────────────────────────────────────────────────────
 
+    const parsedTarget = parseCommentText(existing.comment || null);
+    const targetParentId = parsedTarget.parentId;
+
+    // 1. Eliminar el comentario solicitado
     const { error } = await supabase
       .from(REVIEWS_TABLE)
       .delete()
       .eq('id', reviewId)
       .eq('user_uid', userUid);
+
+    if (error) return { success: false, error: error.message };
+
+    // 2. Si es una respuesta a un comentario padre, decrementar Answers (-1) del padre
+    if (targetParentId) {
+      try {
+        const { data: parentRow } = await supabase
+          .from(REVIEWS_TABLE)
+          .select('id, Answers, answers')
+          .eq('id', targetParentId)
+          .maybeSingle();
+
+        if (parentRow) {
+          const currentCount = Number(parentRow.Answers ?? parentRow.answers ?? 0);
+          const nextCount = Math.max(0, currentCount - 1);
+          await supabase
+            .from(REVIEWS_TABLE)
+            .update({ Answers: nextCount })
+            .eq('id', targetParentId);
+        }
+      } catch (eAnsDec) {
+        console.warn('[Publications] Aviso al decrementar Answers:', eAnsDec);
+      }
+    } else {
+      // 3. Si es un COMENTARIO PRINCIPAL: Eliminar en cascada todas sus respuestas en la BD
+      try {
+        // En nuestra serialización, las respuestas tienen comment con [[reply:reviewId:...]]
+        await supabase
+          .from(REVIEWS_TABLE)
+          .delete()
+          .ilike('comment', `[[reply:${reviewId}:%`);
+      } catch (eCascade) {
+        console.warn('[Publications] Aviso al eliminar respuestas del hilo en cascada:', eCascade);
+      }
+    }
 
     if (error) return { success: false, error: error.message };
 
