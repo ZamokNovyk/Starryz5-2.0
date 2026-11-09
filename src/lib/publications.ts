@@ -893,6 +893,22 @@ export async function updatePublicationReviewComment(params: {
   const cleanStars = typeof stars === 'number' && stars >= 1 && stars <= 5 ? Math.round(stars) : (stars === null ? null : undefined);
 
   try {
+    // ── Verificación de propiedad server-side ────────────────────────────────
+    // SELECT antes del UPDATE: si la fila no existe o user_uid no coincide,
+    // bloqueamos la operación sin depender de que el cliente envíe datos honestos.
+    const { data: existing, error: fetchErr } = await supabase
+      .from(REVIEWS_TABLE)
+      .select('id, user_uid')
+      .eq('id', reviewId)
+      .maybeSingle();
+
+    if (fetchErr) return { success: false, error: fetchErr.message };
+    if (!existing) return { success: false, error: 'El comentario no existe o ya fue eliminado.' };
+    if (existing.user_uid !== userUid) {
+      return { success: false, error: 'No tienes permiso para editar este comentario.' };
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const updatePayload: any = {
       comment: cleanComment,
     };
@@ -943,6 +959,23 @@ export async function deletePublicationReviewComment(
   }
 
   try {
+    // ── Verificación de propiedad server-side ────────────────────────────────
+    // SELECT antes del DELETE: confirmamos que la fila existe y pertenece
+    // al usuario que hace la solicitud. Nunca confiamos solo en el filtro
+    // .eq('user_uid', userUid) porque sin RLS el anon-key permite omitirlo.
+    const { data: existing, error: fetchErr } = await supabase
+      .from(REVIEWS_TABLE)
+      .select('id, user_uid')
+      .eq('id', reviewId)
+      .maybeSingle();
+
+    if (fetchErr) return { success: false, error: fetchErr.message };
+    if (!existing) return { success: false, error: 'El comentario no existe o ya fue eliminado.' };
+    if (existing.user_uid !== userUid) {
+      return { success: false, error: 'No tienes permiso para eliminar este comentario.' };
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const { error } = await supabase
       .from(REVIEWS_TABLE)
       .delete()

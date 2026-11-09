@@ -63,7 +63,15 @@ export default function PublicationCard({
   currentUserId: propUserId,
 }: PublicationCardProps) {
   const { user } = useAuth();
-  const effectiveUserId = propUserId || user?.uid || null;
+
+  // SEGURIDAD: Para decisiones de autorización (editar/borrar),
+  // SIEMPRE usamos el uid de la sesión autenticada actual.
+  // NUNCA confiamos en propUserId para autorización — puede llegar con un valor incorrecto.
+  // propUserId solo se usa donde se requiere un fallback de visualización (interacciones públicas).
+  const sessionUserId = user?.uid || null;
+
+  // Para otras interacciones que no son destructivas (votar, calificar), también usamos la sesión.
+  const effectiveUserId = sessionUserId;
 
   // Control anti-doble clic rápido (mouse defectuoso / rebotes)
   const isVotingRef = useRef(false);
