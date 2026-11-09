@@ -1885,75 +1885,105 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       <div className="space-y-4">
         {/* Barra de pestañas principales: Mis Datos, Publicaciones, Reseñas, Crushes */}
         <div className="bg-[#0b0b0e] border border-zinc-800/80 rounded-2xl p-2 flex items-center gap-2 overflow-x-auto no-scrollbar shadow-lg">
+          {/* MIS DATOS */}
           <button
             type="button"
             onClick={() => setClaimedMainTab('mis_datos')}
             title={isOwnProfile ? 'Mis Datos' : 'Datos'}
-            className={`py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+            className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               claimedMainTab === 'mis_datos'
-                ? 'bg-[#eab308] text-black shadow-md'
+                ? 'text-white'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
             }`}
           >
-            <User className="w-4 h-4 flex-shrink-0" />
-            <span>{isOwnProfile ? t('profile.my_data', 'Mis Datos') : t('profile.data', 'Datos')}</span>
+            <div className="flex items-center gap-2">
+              <User className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'mis_datos' ? 'text-sky-400' : ''}`} />
+              <span>{isOwnProfile ? t('profile.my_data', 'Mis Datos') : t('profile.data', 'Datos')}</span>
+            </div>
+            {claimedMainTab === 'mis_datos' && (
+              <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+            )}
           </button>
 
+          {/* PUBLICACIONES */}
           <button
             type="button"
             onClick={() => setClaimedMainTab('publicaciones')}
             title="Publicaciones"
-            className={`py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+            className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               claimedMainTab === 'publicaciones'
-                ? 'bg-[#eab308] text-black shadow-md'
+                ? 'text-white'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
             }`}
           >
-            <Layers className="w-4 h-4 flex-shrink-0 text-current" />
-            <span>{t('profile.publications', 'Publicaciones')}</span>
+            <div className="flex items-center gap-2">
+              <Layers className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'publicaciones' ? 'text-violet-400' : 'text-current'}`} />
+              <span>{t('profile.publications', 'Publicaciones')}</span>
+            </div>
+            {claimedMainTab === 'publicaciones' && (
+              <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+            )}
           </button>
 
+          {/* RESEÑAS RECIBIDAS */}
           <button
             type="button"
             onClick={() => setClaimedMainTab('reseñas')}
             title="Reseñas"
-            className={`py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+            className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               claimedMainTab === 'reseñas'
-                ? 'bg-[#eab308] text-black shadow-md'
+                ? 'text-white'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
             }`}
           >
-            <Star className="w-4 h-4 flex-shrink-0 text-current" />
-            <span>{t('profile.reviews_received', 'Reseñas Recibidas')}</span>
+            <div className="flex items-center gap-2">
+              <Star className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'reseñas' ? 'text-[#facc15] fill-[#facc15]' : 'text-current'}`} />
+              <span>{t('profile.reviews_received', 'Reseñas Recibidas')}</span>
+            </div>
+            {claimedMainTab === 'reseñas' && (
+              <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+            )}
           </button>
 
+          {/* CRUSHES */}
           <button
             type="button"
             onClick={() => setClaimedMainTab('crushes')}
             title="Crushes"
-            className={`py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+            className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               claimedMainTab === 'crushes'
-                ? 'bg-[#eab308] text-black shadow-md'
+                ? 'text-white'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
             }`}
           >
-            <Heart className="w-4 h-4 flex-shrink-0 text-current" />
-            <span>{t('profile.crushes', 'Crushes')} {crushesCount > 0 ? `(${crushesCount})` : ''}</span>
+            <div className="flex items-center gap-2">
+              <Heart className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'crushes' ? 'text-rose-500 fill-rose-500' : 'text-current'}`} />
+              <span>{t('profile.crushes', 'Crushes')} {crushesCount > 0 ? `(${crushesCount})` : ''}</span>
+            </div>
+            {claimedMainTab === 'crushes' && (
+              <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+            )}
           </button>
 
+          {/* GUARDADOS (solo perfil propio) */}
           {isOwnProfile && (
             <button
               type="button"
               onClick={() => setClaimedMainTab('guardados')}
               title="Guardados"
-              className={`py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+              className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 claimedMainTab === 'guardados'
-                  ? 'bg-[#eab308] text-black shadow-md'
+                  ? 'text-white'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
               }`}
             >
-              <Bookmark className="w-4 h-4 flex-shrink-0 text-current" />
-              <span>{t('profile.saved', 'Guardados')}</span>
+              <div className="flex items-center gap-2">
+                <Bookmark className={`w-4 h-4 flex-shrink-0 transition-colors ${claimedMainTab === 'guardados' ? 'text-amber-400 fill-amber-400' : 'text-current'}`} />
+                <span>{t('profile.saved', 'Guardados')}</span>
+              </div>
+              {claimedMainTab === 'guardados' && (
+                <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+              )}
             </button>
           )}
         </div>
