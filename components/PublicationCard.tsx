@@ -1268,9 +1268,10 @@ export default function PublicationCard({
                     const isEditingThis = editingReviewId === reviewKey;
                     const childReplies = repliesByParent.get(reviewKey) || [];
 
-                    // Conteo total de respuestas del comentario principal: prioriza la columna Answers, o la longitud de childReplies
-                    const dbAnswersCount = Number(rev.Answers ?? rev.answers ?? 0);
-                    const totalRepliesCount = Math.max(dbAnswersCount, childReplies.length);
+                    // Conteo de respuestas: se lee EXCLUSIVAMENTE de la columna Answers de la BD.
+                    // La actualización optimista local refleja el cambio hasta que el usuario
+                    // recargue los comentarios. Nunca contamos childReplies.length para el badge.
+                    const totalRepliesCount = Number(rev.Answers ?? rev.answers ?? 0);
 
                     const isExpanded = Boolean(expandedReplies[reviewKey]);
                     const currentRepliesLimit = repliesLimit[reviewKey] || 5;

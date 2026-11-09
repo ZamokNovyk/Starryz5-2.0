@@ -653,6 +653,7 @@ export async function submitPublicationReview(params: {
   rating_avg?: number;
   total_votes?: number;
   comments_count?: number;
+  parentId?: string | null;
   error?: string;
 }> {
   const {
@@ -779,22 +780,10 @@ export async function submitPublicationReview(params: {
       }
     }
 
-    // Si es una respuesta a un comentario padre, incrementar Answers (+1)
+    // Si es una respuesta a un comentario padre, incrementar Answers (+1) de forma atómica
     if (parentId && insertedOrUpdated) {
       try {
-        const { data: parentRow } = await supabase
-          .from(REVIEWS_TABLE)
-          .select('id, Answers, answers')
-          .eq('id', parentId)
-          .maybeSingle();
-
-        if (parentRow) {
-          const currentCount = Number(parentRow.Answers ?? parentRow.answers ?? 0);
-          await supabase
-            .from(REVIEWS_TABLE)
-            .update({ Answers: currentCount + 1 })
-            .eq('id', parentId);
-        }
+        await supabase.rpc('increment_answers', { comment_id: parentId });
       } catch (eAns) {
         console.warn('[Publications] Aviso al incrementar Answers en comentario padre:', eAns);
       }
@@ -884,6 +873,7 @@ export async function submitPublicationReview(params: {
       rating_avg: metrics.rating_avg,
       total_votes: metrics.total_votes,
       comments_count: metrics.comments_count,
+      parentId: parentId || null,
     };
   } catch (err: any) {
     console.error('[Publications] Excepción al procesar reseña:', err);
@@ -1013,23 +1003,10 @@ export async function deletePublicationReviewComment(
 
     if (error) return { success: false, error: error.message };
 
-    // 2. Si es una respuesta a un comentario padre, decrementar Answers (-1) del padre
+    // 2. Si es una respuesta a un comentario padre, decrementar Answers (-1) del padre de forma atómica
     if (targetParentId) {
       try {
-        const { data: parentRow } = await supabase
-          .from(REVIEWS_TABLE)
-          .select('id, Answers, answers')
-          .eq('id', targetParentId)
-          .maybeSingle();
-
-        if (parentRow) {
-          const currentCount = Number(parentRow.Answers ?? parentRow.answers ?? 0);
-          const nextCount = Math.max(0, currentCount - 1);
-          await supabase
-            .from(REVIEWS_TABLE)
-            .update({ Answers: nextCount })
-            .eq('id', targetParentId);
-        }
+        await supabase.rpc('decrement_answers', { comment_id: targetParentId });
       } catch (eAnsDec) {
         console.warn('[Publications] Aviso al decrementar Answers:', eAnsDec);
       }
