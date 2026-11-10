@@ -85,6 +85,46 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  // ── CABECERAS DE SEGURIDAD HTTP (SECURITY HEADERS - A+ RATING) ──
+  app.use((req, res, next) => {
+    // 1. Forzar HTTPS estricto durante 1 año con subdominios y preload
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+
+    // 2. Prevenir Clickjacking impidiendo iframes de orígenes cruzados
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+
+    // 3. Prevenir MIME sniffing
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    // 4. Política de Referrer segura
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    // 5. Restringir acceso a APIs de hardware sensibles no utilizadas
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+
+    // 6. Aislamiento de ventana permitiendo popups de Google OAuth
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+
+    // 7. Content Security Policy adaptada para Starryz 5 (Supabase, Google OAuth, Firebase FCM, Media CDN, FlagCDN, Fonts)
+    const cspDirectives = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://www.googletagmanager.com https://apis.google.com https://www.gstatic.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: blob: https://starryz5.com https://media.starryz5.com https://lh3.googleusercontent.com https://flagcdn.com https://*.supabase.co https://www.googletagmanager.com https://www.google-analytics.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://oauth2.googleapis.com https://accounts.google.com https://fcm.googleapis.com https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com",
+      "frame-src 'self' https://accounts.google.com",
+      "worker-src 'self' blob:",
+      "manifest-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'"
+    ].join('; ');
+
+    res.setHeader('Content-Security-Policy', cspDirectives);
+
+    next();
+  });
+
   // Dominios autorizados para CORS
   const ALLOWED_ORIGIN_PATTERNS = [
     'https://starryz5.com',
@@ -96,23 +136,18 @@ async function startServer() {
     '.pages.dev'
   ];
 
-  // CORS seguro con validación de origen
+  // CORS seguro con validación de origen estricta
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     let allowed = false;
 
-    if (!origin) {
-      allowed = true;
-    } else {
+    if (origin) {
       allowed = ALLOWED_ORIGIN_PATTERNS.some(pattern => 
         pattern.startsWith('https://') ? origin === pattern : origin.includes(pattern)
       );
-    }
-
-    if (allowed && origin) {
-      res.header('Access-Control-Allow-Origin', origin);
-    } else if (!origin) {
-      res.header('Access-Control-Allow-Origin', '*');
+      if (allowed) {
+        res.header('Access-Control-Allow-Origin', origin);
+      }
     }
 
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
