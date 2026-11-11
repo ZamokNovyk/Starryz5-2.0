@@ -18,3 +18,4 @@ SET
 
 -- Recargar esquema en PostgREST
 NOTIFY pgrst, 'reload schema';
+
