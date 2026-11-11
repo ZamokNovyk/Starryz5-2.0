@@ -2,15 +2,24 @@ import { useLanguage } from '@/src/context/LanguageContext';
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Bookmark, Sparkles, Loader2, Layers } from 'lucide-react';
+import { Bookmark, Sparkles, Loader2, Layers, Lock } from 'lucide-react';
 import { UserPublication, getUserSavedPublications } from '@/src/lib/publications';
 import PublicationCard from './PublicationCard';
+import PrivacyLockButton from './PrivacyLockButton';
 
 interface UserSavedPublicationsViewProps {
   userUid: string;
+  isOwnProfile?: boolean;
+  savedMode?: 'solo_yo' | 'todos' | null;
+  onUpdateSavedMode?: (newMode: 'solo_yo' | 'todos') => void;
 }
 
-export default function UserSavedPublicationsView({ userUid }: UserSavedPublicationsViewProps) {
+export default function UserSavedPublicationsView({ 
+  userUid,
+  isOwnProfile = true,
+  savedMode = 'solo_yo',
+  onUpdateSavedMode
+}: UserSavedPublicationsViewProps) {
   const { t } = useLanguage();
   const [savedPublications, setSavedPublications] = useState<UserPublication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,9 +60,37 @@ export default function UserSavedPublicationsView({ userUid }: UserSavedPublicat
     );
   }
 
+  // Si no es el dueño y está configurado en "solo_yo" (privado)
+  if (!isOwnProfile && (savedMode === 'solo_yo' || !savedMode)) {
+    return (
+      <div className="p-10 sm:p-14 rounded-3xl bg-[#0b0b0e] border border-zinc-800/80 text-center space-y-3 max-w-3xl mx-auto w-full shadow-xl animate-in fade-in duration-300">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+          <Lock className="w-6 h-6 text-amber-400" />
+        </div>
+        <h4 className="text-base font-bold text-white uppercase tracking-wider">
+          Colección de Guardados Privada
+        </h4>
+        <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+          Este usuario mantiene sus publicaciones guardadas en modo privado (Solo yo).
+        </p>
+      </div>
+    );
+  }
+
   if (savedPublications.length === 0) {
     return (
-      <div className="p-10 sm:p-14 rounded-3xl bg-[#0b0b0e] border border-zinc-800/80 text-center space-y-4 max-w-3xl mx-auto w-full shadow-xl animate-in fade-in duration-300">
+      <div className="relative p-10 sm:p-14 rounded-3xl bg-[#0b0b0e] border border-zinc-800/80 text-center space-y-4 max-w-3xl mx-auto w-full shadow-xl animate-in fade-in duration-300">
+        {/* Candado de Privacidad en la esquina superior derecha */}
+        {isOwnProfile && onUpdateSavedMode && (
+          <div className="absolute top-4 right-4">
+            <PrivacyLockButton
+              mode={savedMode || 'solo_yo'}
+              onChange={onUpdateSavedMode}
+              label="Guardados"
+            />
+          </div>
+        )}
+
         <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-md">
           <Bookmark className="w-8 h-8" />
         </div>
@@ -75,12 +112,18 @@ export default function UserSavedPublicationsView({ userUid }: UserSavedPublicat
         <div className="flex items-center gap-2">
           <Bookmark className="w-5 h-5 text-amber-400 fill-amber-400" />
           <h3 className="text-base font-black text-white uppercase tracking-wider">
-            {t('saved.title', 'TUS PUBLICACIONES GUARDADAS')} ({savedPublications.length})
+            {t('saved.title', 'PUBLICACIONES GUARDADAS')} ({savedPublications.length})
           </h3>
         </div>
-        <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
-          {t('saved.private_collection', 'COLECCIÓN PRIVADA')}
-        </span>
+        <div className="flex items-center gap-2">
+          {isOwnProfile && onUpdateSavedMode && (
+            <PrivacyLockButton
+              mode={savedMode || 'solo_yo'}
+              onChange={onUpdateSavedMode}
+              label="Guardados"
+            />
+          )}
+        </div>
       </div>
 
       <div className="space-y-6">

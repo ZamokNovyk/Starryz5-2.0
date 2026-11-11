@@ -90,6 +90,7 @@ import CountrySelector from '@/components/CountrySelector';
 import { findCountry, getFlagUrl } from '@/src/data/countries';
 import UserPublicationsView from '@/components/UserPublicationsView';
 import UserSavedPublicationsView from '@/components/UserSavedPublicationsView';
+import PrivacyLockButton from '@/components/PrivacyLockButton';
 
 interface SupabaseUser {
   id: string;
@@ -110,6 +111,9 @@ interface SupabaseUser {
   created_at: string;
   is_anonymous: boolean;
   linked_google_at: string | null;
+  saved_mode?: 'solo_yo' | 'todos' | null;
+  interactions_mode?: 'solo_yo' | 'todos' | null;
+  subscriptions_mode?: 'solo_yo' | 'todos' | null;
 }
 
 function parseFullName(fullName: string): { nombres: string; apellidoPaterno: string; apellidoMaterno: string } {
@@ -583,6 +587,32 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       setFanCount(res.newCounts.fanCount);
     } catch (err) {
       console.error('Error al votar actitud:', err);
+    }
+  };
+
+  const handleUpdatePrivacyMode = async (
+    section: 'interactions' | 'subscriptions' | 'saved',
+    newMode: 'solo_yo' | 'todos'
+  ) => {
+    if (!isOwnProfile) return;
+    const targetUserId = dbUser?.id || user?.uid;
+    if (!targetUserId) return;
+
+    const col = section === 'interactions' 
+      ? 'interactions_mode' 
+      : section === 'subscriptions' 
+      ? 'subscriptions_mode' 
+      : 'saved_mode';
+
+    setDbUser((prev: any) => prev ? { ...prev, [col]: newMode } : prev);
+
+    try {
+      await supabase
+        .from('users')
+        .update({ [col]: newMode })
+        .eq('id', targetUserId);
+    } catch (e) {
+      console.warn(`Aviso al actualizar ${col} en users:`, e);
     }
   };
 
@@ -1890,18 +1920,20 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             type="button"
             onClick={() => setClaimedMainTab('mis_datos')}
             title={isOwnProfile ? 'Mis Datos' : 'Datos'}
-            className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+            className={`relative py-2.5 px-3 sm:px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               claimedMainTab === 'mis_datos'
                 ? 'text-white'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
             }`}
           >
             <div className="flex items-center gap-2">
-              <User className={`w-4 h-4 flex-shrink-0 text-sky-400`} />
-              <span>{isOwnProfile ? t('profile.my_data', 'Mis Datos') : t('profile.data', 'Datos')}</span>
+              <User className="w-4 h-4 flex-shrink-0 text-sky-400" />
+              <span className={claimedMainTab === 'mis_datos' ? 'inline' : 'hidden sm:inline'}>
+                {isOwnProfile ? t('profile.my_data', 'Mis Datos') : t('profile.data', 'Datos')}
+              </span>
             </div>
             {claimedMainTab === 'mis_datos' && (
-              <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+              <span className="absolute bottom-0.5 left-2 right-2 sm:left-4 sm:right-4 h-0.5 rounded-full bg-[#eab308]" />
             )}
           </button>
 
@@ -1910,7 +1942,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             type="button"
             onClick={() => setClaimedMainTab('publicaciones')}
             title="Publicaciones"
-            className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+            className={`relative py-2.5 px-3 sm:px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               claimedMainTab === 'publicaciones'
                 ? 'text-white'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
@@ -1918,10 +1950,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           >
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 flex-shrink-0 text-violet-400" />
-              <span>{t('profile.publications', 'Publicaciones')}</span>
+              <span className={claimedMainTab === 'publicaciones' ? 'inline' : 'hidden sm:inline'}>
+                {t('profile.publications', 'Publicaciones')}
+              </span>
             </div>
             {claimedMainTab === 'publicaciones' && (
-              <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+              <span className="absolute bottom-0.5 left-2 right-2 sm:left-4 sm:right-4 h-0.5 rounded-full bg-[#eab308]" />
             )}
           </button>
 
@@ -1930,7 +1964,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             type="button"
             onClick={() => setClaimedMainTab('reseñas')}
             title="Reseñas"
-            className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+            className={`relative py-2.5 px-3 sm:px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               claimedMainTab === 'reseñas'
                 ? 'text-white'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
@@ -1938,10 +1972,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           >
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 flex-shrink-0 text-[#facc15] fill-[#facc15]" />
-              <span>{t('profile.reviews_received', 'Reseñas Recibidas')}</span>
+              <span className={claimedMainTab === 'reseñas' ? 'inline' : 'hidden sm:inline'}>
+                {t('profile.reviews_received', 'Reseñas Recibidas')}
+              </span>
             </div>
             {claimedMainTab === 'reseñas' && (
-              <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+              <span className="absolute bottom-0.5 left-2 right-2 sm:left-4 sm:right-4 h-0.5 rounded-full bg-[#eab308]" />
             )}
           </button>
 
@@ -1950,7 +1986,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             type="button"
             onClick={() => setClaimedMainTab('crushes')}
             title="Crushes"
-            className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+            className={`relative py-2.5 px-3 sm:px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
               claimedMainTab === 'crushes'
                 ? 'text-white'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
@@ -1958,20 +1994,22 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           >
             <div className="flex items-center gap-2">
               <Heart className="w-4 h-4 flex-shrink-0 text-rose-500 fill-rose-500" />
-              <span>{t('profile.crushes', 'Crushes')}</span>
+              <span className={claimedMainTab === 'crushes' ? 'inline' : 'hidden sm:inline'}>
+                {t('profile.crushes', 'Crushes')}
+              </span>
             </div>
             {claimedMainTab === 'crushes' && (
-              <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+              <span className="absolute bottom-0.5 left-2 right-2 sm:left-4 sm:right-4 h-0.5 rounded-full bg-[#eab308]" />
             )}
           </button>
 
-          {/* GUARDADOS (solo perfil propio) */}
-          {isOwnProfile && (
+          {/* GUARDADOS */}
+          {(isOwnProfile || dbUser?.saved_mode === 'todos') && (
             <button
               type="button"
               onClick={() => setClaimedMainTab('guardados')}
               title="Guardados"
-              className={`relative py-2.5 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+              className={`relative py-2.5 px-3 sm:px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center justify-center gap-1 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 claimedMainTab === 'guardados'
                   ? 'text-white'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-900/80'
@@ -1979,10 +2017,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             >
               <div className="flex items-center gap-2">
                 <Bookmark className="w-4 h-4 flex-shrink-0 text-amber-400 fill-amber-400" />
-                <span>{t('profile.saved', 'Guardados')}</span>
+                <span className={claimedMainTab === 'guardados' ? 'inline' : 'hidden sm:inline'}>
+                  {t('profile.saved', 'Guardados')}
+                </span>
               </div>
               {claimedMainTab === 'guardados' && (
-                <span className="absolute bottom-0.5 left-4 right-4 h-0.5 rounded-full bg-[#eab308]" />
+                <span className="absolute bottom-0.5 left-2 right-2 sm:left-4 sm:right-4 h-0.5 rounded-full bg-[#eab308]" />
               )}
             </button>
           )}
@@ -2464,7 +2504,12 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
 
           ) : claimedMainTab === 'guardados' ? (
             /* TAB: PUBLICACIONES GUARDADAS */
-            <UserSavedPublicationsView userUid={uid || user?.uid || ''} />
+            <UserSavedPublicationsView 
+              userUid={uid || user?.uid || ''} 
+              isOwnProfile={isOwnProfile}
+              savedMode={dbUser?.saved_mode || 'solo_yo'}
+              onUpdateSavedMode={(mode) => handleUpdatePrivacyMode('saved', mode)}
+            />
 
           ) : (
             /* TAB: MIS DATOS / PERFIL ESTÁNDAR */
@@ -2853,76 +2898,99 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                 </div>
               )}
 
-              {/* 3 Subtags solicitadas: Seguidos, Fans y Calificaciones */}
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar max-w-full pb-1">
-                {/* Seguidos — color: sky/celeste */}
-                <button
-                  type="button"
-                  onClick={() => setInteractionFilter('knows')}
-                  className={`relative px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    interactionFilter === 'knows'
-                      ? 'text-sky-300 font-extrabold'
-                      : 'text-sky-400/70 hover:text-sky-300 bg-[#121212] border border-sky-500/20 hover:bg-sky-950/20'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <UserCheck className="w-3.5 h-3.5 text-sky-400" />
-                    <span className={interactionFilter === 'knows' ? 'inline' : 'hidden sm:inline'}>Seguidos</span>
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-sky-500/20 text-sky-300">
-                      {interactions.filter(i => i.type === 'knows').length}
+              {/* 3 Subtags solicitadas: Seguidos, Fans y Calificaciones + Botón de Privacidad */}
+              <div className="flex items-center justify-between gap-2 max-w-full pb-1">
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                  {/* Seguidos — color: sky/celeste */}
+                  <button
+                    type="button"
+                    onClick={() => setInteractionFilter('knows')}
+                    className={`relative px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                      interactionFilter === 'knows'
+                        ? 'text-sky-300 font-extrabold'
+                        : 'text-sky-400/70 hover:text-sky-300 bg-[#121212] border border-sky-500/20 hover:bg-sky-950/20'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <UserCheck className="w-3.5 h-3.5 text-sky-400" />
+                      <span className={interactionFilter === 'knows' ? 'inline' : 'hidden sm:inline'}>Seguidos</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-sky-500/20 text-sky-300">
+                        {interactions.filter(i => i.type === 'knows').length}
+                      </span>
                     </span>
-                  </span>
-                  {interactionFilter === 'knows' && (
-                    <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-sky-400" />
-                  )}
-                </button>
+                    {interactionFilter === 'knows' && (
+                      <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-sky-400" />
+                    )}
+                  </button>
 
-                {/* Fans — color: rosado/pink */}
-                <button
-                  type="button"
-                  onClick={() => setInteractionFilter('fans')}
-                  className={`relative px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    interactionFilter === 'fans'
-                      ? 'text-pink-300 font-extrabold'
-                      : 'text-pink-400/70 hover:text-pink-300 bg-[#121212] border border-pink-500/20 hover:bg-pink-950/20'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <Heart className="w-3.5 h-3.5 text-pink-400 fill-pink-400" />
-                    <span className={interactionFilter === 'fans' ? 'inline' : 'hidden sm:inline'}>Fans</span>
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-pink-500/20 text-pink-300">
-                      {interactions.filter(i => i.type === 'fans').length}
+                  {/* Fans — color: rosado/pink */}
+                  <button
+                    type="button"
+                    onClick={() => setInteractionFilter('fans')}
+                    className={`relative px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                      interactionFilter === 'fans'
+                        ? 'text-pink-300 font-extrabold'
+                        : 'text-pink-400/70 hover:text-pink-300 bg-[#121212] border border-pink-500/20 hover:bg-pink-950/20'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Heart className="w-3.5 h-3.5 text-pink-400 fill-pink-400" />
+                      <span className={interactionFilter === 'fans' ? 'inline' : 'hidden sm:inline'}>Fans</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-pink-500/20 text-pink-300">
+                        {interactions.filter(i => i.type === 'fans').length}
+                      </span>
                     </span>
-                  </span>
-                  {interactionFilter === 'fans' && (
-                    <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-pink-400" />
-                  )}
-                </button>
+                    {interactionFilter === 'fans' && (
+                      <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-pink-400" />
+                    )}
+                  </button>
 
-                {/* Calificaciones — color: amber/yellow */}
-                <button
-                  type="button"
-                  onClick={() => setInteractionFilter('ratings')}
-                  className={`relative px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    interactionFilter === 'ratings'
-                      ? 'text-[#facc15] font-extrabold'
-                      : 'text-[#eab308]/70 hover:text-[#facc15] bg-[#121212] border border-[#eab308]/20 hover:bg-amber-950/20'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <Star className="w-3.5 h-3.5 text-[#facc15] fill-[#facc15]" />
-                    <span className={interactionFilter === 'ratings' ? 'inline' : 'hidden sm:inline'}>Calificaciones</span>
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
-                      {interactions.filter(i => i.type === 'ratings').length}
+                  {/* Calificaciones — color: amber/yellow */}
+                  <button
+                    type="button"
+                    onClick={() => setInteractionFilter('ratings')}
+                    className={`relative px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-0.5 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                      interactionFilter === 'ratings'
+                        ? 'text-[#facc15] font-extrabold'
+                        : 'text-[#eab308]/70 hover:text-[#facc15] bg-[#121212] border border-[#eab308]/20 hover:bg-amber-950/20'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Star className="w-3.5 h-3.5 text-[#facc15] fill-[#facc15]" />
+                      <span className={interactionFilter === 'ratings' ? 'inline' : 'hidden sm:inline'}>Calificaciones</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300">
+                        {interactions.filter(i => i.type === 'ratings').length}
+                      </span>
                     </span>
-                  </span>
-                  {interactionFilter === 'ratings' && (
-                    <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-[#facc15]" />
-                  )}
-                </button>
+                    {interactionFilter === 'ratings' && (
+                      <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-[#facc15]" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Candado de Privacidad para el dueño del perfil */}
+                {isOwnProfile && (
+                  <div className="flex-shrink-0 pl-1">
+                    <PrivacyLockButton
+                      mode={dbUser?.interactions_mode || 'solo_yo'}
+                      onChange={(mode) => handleUpdatePrivacyMode('interactions', mode)}
+                      label="Interacciones"
+                    />
+                  </div>
+                )}
               </div>
 
-              {loadingInteractions ? (
+              {!isOwnProfile && (dbUser?.interactions_mode === 'solo_yo' || !dbUser?.interactions_mode) ? (
+                <div className="p-10 rounded-3xl bg-[#0b0b0e] border border-zinc-800/80 text-center space-y-3">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+                    <Lock className="w-6 h-6 text-amber-400" />
+                  </div>
+                  <h4 className="text-base font-bold text-white uppercase tracking-wider">Interacciones Privadas</h4>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                    Este usuario mantiene sus interacciones en modo privado (Solo yo).
+                  </p>
+                </div>
+              ) : loadingInteractions ? (
                 <div className="py-12 flex flex-col items-center justify-center space-y-3">
                   <Loader2 className="w-8 h-8 animate-spin text-[#eab308]" />
                   <p className="text-xs text-zinc-500 font-medium">Cargando tus interacciones de Supabase...</p>
@@ -3093,17 +3161,39 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       : 'Perfiles educativos suscritos para notificaciones automáticas.'}
                   </p>
                 </div>
+
+                {isOwnProfile && (
+                  <div className="self-end sm:self-center flex-shrink-0">
+                    <PrivacyLockButton
+                      mode={dbUser?.subscriptions_mode || 'solo_yo'}
+                      onChange={(mode) => handleUpdatePrivacyMode('subscriptions', mode)}
+                      label="Suscripciones"
+                    />
+                  </div>
+                )}
               </div>
 
-              {subscriptionsError && (
-                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{subscriptionsError}</span>
+              {!isOwnProfile && (dbUser?.subscriptions_mode === 'solo_yo' || !dbUser?.subscriptions_mode) ? (
+                <div className="p-10 rounded-3xl bg-[#0b0b0e] border border-zinc-800/80 text-center space-y-3">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+                    <Lock className="w-6 h-6 text-amber-400" />
+                  </div>
+                  <h4 className="text-base font-bold text-white uppercase tracking-wider">Suscripciones Privadas</h4>
+                  <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                    Este usuario mantiene sus suscripciones en modo privado (Solo yo).
+                  </p>
                 </div>
-              )}
+              ) : (
+                <>
+                  {subscriptionsError && (
+                    <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/20 border border-red-900/30 p-3 rounded-xl">
+                      <AlertCircle className="w-4 h-4" />
+                      <span>{subscriptionsError}</span>
+                    </div>
+                  )}
 
-              {/* Subtags / Filtro entre Profesores y Estudiantes */}
-              <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
+                  {/* Subtags / Filtro entre Profesores y Estudiantes */}
+                  <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
                 <button
                   type="button"
                   onClick={() => setSubscriptionsSubTab('professors')}
@@ -3402,6 +3492,8 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     ))}
                   </div>
                 )
+              )}
+                </>
               )}
             </div>
           )}
