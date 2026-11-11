@@ -32,6 +32,9 @@ export interface UserPublication {
   saves_count: number;
   views_count: number;
   shares_count: number;
+  retention_total_seconds?: number;
+  retention_views_count?: number;
+  retention_avg?: number;
   description: string;
   estado_de_vista?: 'todos' | 'solo_yo' | 'solo_seguidores' | 'solo_fans' | string | null;
   user_display_name?: string | null;
@@ -220,6 +223,9 @@ export async function createPublication(
     saves_count: 0,
     views_count: 0,
     shares_count: 0,
+    retention_total_seconds: 0.00,
+    retention_views_count: 0,
+    retention_avg: 0.00,
     user_display_name: authorInfo?.displayName || null,
     user_username: authorInfo?.username || null,
     user_avatar_url: authorInfo?.avatarUrl || null,
@@ -1303,6 +1309,76 @@ export async function incrementPublicationShare(publicationId: string): Promise<
     return newShares;
   } catch (err) {
     return 0;
+  }
+}
+
+/**
+ * Registra el tiempo de retención (en segundos) de una publicación.
+ * Aplica filtro de umbral mínimo de 1.0s y límite superior de seguridad de 45.0s.
+ * Intenta primero la función RPC atómica 'record_publication_retention'.
+ * Si el RPC aún no fue creado en Supabase, recurre a actualización directa segura.
+ */
+export async function recordPublicationRetention(
+  publicationId: string,
+  seconds: number
+): Promise<{ newAvg: number; newTotalSeconds: number; newViewsCount: number } | null> {
+  if (!publicationId || typeof seconds !== 'number' || seconds < 1) return null;
+
+  // Límite de seguridad: mínimo 1.0s, máximo 45.0s
+  const cleanSeconds = Number(Math.min(Math.max(seconds, 1.0), 45.0).toFixed(2));
+
+  try {
+    // 1. Intentar RPC atómica en Supabase
+    const { data, error } = await supabase.rpc('record_publication_retention', {
+      p_publication_id: publicationId,
+      p_seconds: cleanSeconds,
+    });
+
+    if (!error && Array.isArray(data) && data.length > 0) {
+      const row = data[0];
+      return {
+        newAvg: Number(row.new_avg ?? 0),
+        newTotalSeconds: Number(row.new_total_seconds ?? 0),
+        newViewsCount: Number(row.new_views_count ?? 0),
+      };
+    }
+
+    // 2. Fallback directo si el RPC no existe aún o devuelve error
+    const { data: currentData, error: selErr } = await supabase
+      .from('user-publications')
+      .select('retention_total_seconds, retention_views_count')
+      .eq('id', publicationId)
+      .maybeSingle();
+
+    if (selErr) {
+      console.warn('[Publications] Fallback select error:', selErr.message);
+      return null;
+    }
+
+    const currentTotal = Number(currentData?.retention_total_seconds || 0);
+    const currentCount = Number(currentData?.retention_views_count || 0);
+
+    const newTotal = Number((currentTotal + cleanSeconds).toFixed(2));
+    const newCount = currentCount + 1;
+    const newAvg = Number((newTotal / newCount).toFixed(2));
+
+    await supabase
+      .from('user-publications')
+      .update({
+        retention_total_seconds: newTotal,
+        retention_views_count: newCount,
+        retention_avg: newAvg,
+      })
+      .eq('id', publicationId);
+
+    return {
+      newAvg,
+      newTotalSeconds: newTotal,
+      newViewsCount: newCount,
+    };
+  } catch (err) {
+    console.warn('[Publications] Error al registrar retención:', err);
+    return null;
   }
 }
 

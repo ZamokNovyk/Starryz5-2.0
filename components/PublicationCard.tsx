@@ -6,6 +6,7 @@ import {
   MessageSquare,
   Bookmark,
   Eye,
+  Timer,
   Share2,
   Trash2,
   Send,
@@ -43,6 +44,7 @@ import {
   toggleSavePublication,
   incrementPublicationView,
   incrementPublicationShare,
+  recordPublicationRetention,
   updateOpenGraphMeta,
   updatePublicationVisibility
 } from '@/src/lib/publications';
@@ -88,6 +90,9 @@ export default function PublicationCard({
   const [savesCount, setSavesCount] = useState<number>(publication.saves_count || 0);
   const [viewsCount, setViewsCount] = useState<number>(publication.views_count || 0);
   const [sharesCount, setSharesCount] = useState<number>(publication.shares_count || 0);
+  const [retentionAvg, setRetentionAvg] = useState<number>(
+    typeof publication.retention_avg === 'number' ? publication.retention_avg : 0
+  );
 
   // Estados de calificación
   const [publicationAvg, setPublicationAvg] = useState<string>(
@@ -244,6 +249,88 @@ export default function PublicationCard({
         else setViewsCount((prev) => prev + 1);
       });
     }
+  }, [publication.id]);
+
+  // 3. Medición precisa de tiempo de retención (Dwell Time)
+  const cardRef = useRef<HTMLElement | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const accumulatedMsRef = useRef<number>(0);
+  const isVisibleRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (!publication.id || typeof window === 'undefined') return;
+
+    // Función para sincronizar y despachar la retención pendiente si supera 1.0s
+    const flushRetention = () => {
+      if (isVisibleRef.current && startTimeRef.current !== null) {
+        const now = Date.now();
+        accumulatedMsRef.current += (now - startTimeRef.current);
+        startTimeRef.current = isVisibleRef.current ? now : null;
+      }
+
+      const totalSeconds = accumulatedMsRef.current / 1000;
+      // Solo registra como retención válida si superó al menos 1.0 segundo
+      if (totalSeconds >= 1.0) {
+        accumulatedMsRef.current = 0; // Resetear acumulador
+        recordPublicationRetention(publication.id, totalSeconds).then((res) => {
+          if (res && typeof res.newAvg === 'number') {
+            setRetentionAvg(res.newAvg);
+          }
+        });
+      }
+    };
+
+    // Pausar si la pestaña o ventana se minimiza o pasa a segundo plano
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (isVisibleRef.current && startTimeRef.current !== null) {
+          accumulatedMsRef.current += (Date.now() - startTimeRef.current);
+          startTimeRef.current = null;
+        }
+      } else if (document.visibilityState === 'visible') {
+        if (isVisibleRef.current) {
+          startTimeRef.current = Date.now();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // IntersectionObserver con umbral de 50% de visibilidad en pantalla
+    let observer: IntersectionObserver | null = null;
+    if ('IntersectionObserver' in window && cardRef.current) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting && document.visibilityState === 'visible') {
+              // Entró a pantalla (al menos 50% visible)
+              isVisibleRef.current = true;
+              startTimeRef.current = Date.now();
+            } else {
+              // Salió de la pantalla: pausar cronómetro y despachar si cumplió >= 1 segundo
+              if (isVisibleRef.current && startTimeRef.current !== null) {
+                accumulatedMsRef.current += (Date.now() - startTimeRef.current);
+                startTimeRef.current = null;
+              }
+              isVisibleRef.current = false;
+              flushRetention();
+            }
+          });
+        },
+        { threshold: 0.5 }
+      );
+
+      observer.observe(cardRef.current);
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (observer) {
+        observer.disconnect();
+      }
+      // Despachar cualquier tiempo remanente al desmontar el componente
+      flushRetention();
+    };
   }, [publication.id]);
 
   // Cargar comentarios si se abre la sección
@@ -734,7 +821,7 @@ export default function PublicationCard({
     : '';
 
   return (
-    <article className="bg-[#101116] border border-[#23242d] rounded-3xl p-4 sm:p-6 shadow-2xl transition-all duration-200 max-w-3xl mx-auto w-full space-y-4">
+    <article ref={cardRef} className="bg-[#101116] border border-[#23242d] rounded-3xl p-4 sm:p-6 shadow-2xl transition-all duration-200 max-w-3xl mx-auto w-full space-y-4">
       {/* HEADER DE LA PUBLICACIÓN REDISEÑADO */}
       <div className="relative">
         {/* Botón de 3 puntos vertical posicionado arriba a la derecha */}
@@ -1038,6 +1125,17 @@ export default function PublicationCard({
           <Eye className="w-4 h-4 text-zinc-400" />
           <span className="font-mono text-xs text-zinc-300">
             {formatCount(viewsCount)}
+          </span>
+        </div>
+
+        {/* 3.5. Retención promedio */}
+        <div
+          className="flex items-center gap-1.5 text-zinc-400 py-1.5 px-2 select-none hover:text-emerald-400 transition-colors"
+          title={`Retención promedio estimada: ${retentionAvg > 0 ? `${retentionAvg.toFixed(1)}s por visualización` : 'Calculando retención...'}`}
+        >
+          <Timer className="w-4 h-4 text-emerald-500/80" />
+          <span className="font-mono text-xs text-zinc-300">
+            {retentionAvg > 0 ? `${retentionAvg.toFixed(1)}s` : '0s'}
           </span>
         </div>
 
