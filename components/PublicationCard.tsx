@@ -48,6 +48,7 @@ import {
 } from '@/src/lib/publications';
 import { getFlagUrl } from '@/src/data/countries';
 import { useAuth } from '@/src/context/AuthContext';
+import PublicationRatingsModal from './PublicationRatingsModal';
 
 interface PublicationCardProps {
   publication: UserPublication;
@@ -141,6 +142,9 @@ export default function PublicationCard({
 
   // Estado para reporte visual
   const [showReportToast, setShowReportToast] = useState(false);
+
+  // Estado modal de calificaciones (quién votó)
+  const [showRatingsModal, setShowRatingsModal] = useState(false);
 
   // ¿El usuario ya tiene una reseña (calificación con comentario de texto)?
   const hasExistingReview = Boolean(
@@ -962,15 +966,17 @@ export default function PublicationCard({
           })}
         </div>
 
-        {/* Calificación general de la imagen / publicación (debajo de las estrellas grandes) */}
-        <div
-          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#181922] border border-[#373948] text-[#facc15] text-xs font-extrabold tracking-wider shadow-sm select-none mt-1"
-          title="Calificación general de la publicación"
+        {/* Calificación general de la imagen / publicación (debajo de las estrellas grandes) - Clickable para ver votantes */}
+        <button
+          type="button"
+          onClick={() => setShowRatingsModal(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#181922] hover:bg-[#20212e] border border-[#373948] hover:border-amber-500/50 text-[#facc15] text-xs font-extrabold tracking-wider shadow-sm select-none mt-1 cursor-pointer transition-all active:scale-95 group"
+          title="Ver quiénes calificaron esta publicación"
         >
-          <Star className="w-3.5 h-3.5 fill-[#facc15] text-[#facc15]" />
+          <Star className="w-3.5 h-3.5 fill-[#facc15] text-[#facc15] group-hover:scale-110 transition-transform" />
           <span className="font-mono text-white text-xs">{publicationAvg}</span>
-          <span className="text-[11px] text-zinc-400 font-normal">({publicationVotesCount} {publicationVotesCount === 1 ? 'voto' : 'votos'})</span>
-        </div>
+          <span className="text-[11px] text-zinc-400 group-hover:text-zinc-200 font-normal">({publicationVotesCount} {publicationVotesCount === 1 ? 'voto' : 'votos'})</span>
+        </button>
 
         {ratingErrorMsg && (
           <div className="mt-1 px-3 py-1.5 rounded-xl bg-amber-950/50 border border-amber-500/40 text-amber-300 text-[11px] font-semibold flex items-center gap-1.5 animate-in fade-in duration-200">
@@ -1739,6 +1745,18 @@ export default function PublicationCard({
           </div>
         </div>
       )}
+
+      {/* Modal para ver quiénes calificaron la publicación */}
+      <PublicationRatingsModal
+        isOpen={showRatingsModal}
+        onClose={() => setShowRatingsModal(false)}
+        publicationId={publication.id}
+        ratingAvg={publicationAvg}
+        totalVotes={publicationVotesCount}
+        onNavigateToUser={(userId) => {
+          window.location.href = `/perfil/${userId}`;
+        }}
+      />
     </article>
   );
 }

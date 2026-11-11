@@ -425,6 +425,87 @@ export async function getUserPublicationRating(
   }
 }
 
+export interface PublicationRatingVoter {
+  id: string;
+  user_uid: string;
+  stars: number;
+  created_at: string;
+  user_display_name?: string | null;
+  user_avatar_url?: string | null;
+  user_username?: string | null;
+  country_code?: string | null;
+}
+
+/**
+ * Obtiene la lista pública de usuarios que han calificado una publicación con paginación de 10 en 10
+ */
+export async function getPublicationRatingsList(
+  publicationId: string,
+  page: number = 0,
+  pageSize: number = 10
+): Promise<{ voters: PublicationRatingVoter[]; hasMore: boolean; totalCount: number }> {
+  if (!publicationId) return { voters: [], hasMore: false, totalCount: 0 };
+  
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  try {
+    const { data, count, error } = await supabase
+      .from(REVIEWS_TABLE)
+      .select('id, user_uid, stars, created_at, user_display_name, user_avatar_url, user_username', { count: 'exact' })
+      .eq('publication_id', publicationId)
+      .not('stars', 'is', null)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error || !data) {
+      return { voters: [], hasMore: false, totalCount: 0 };
+    }
+
+    // Enriquecer datos con la tabla users si está disponible
+    const uids = data.map((d: any) => d.user_uid).filter(Boolean);
+    let userMap: Record<string, { photo_url?: string; display_name?: string; country_code?: string }> = {};
+    if (uids.length > 0) {
+      try {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, photo_url, display_name, country_code')
+          .in('id', uids);
+
+        if (usersData) {
+          usersData.forEach((u: any) => {
+            userMap[u.id] = u;
+          });
+        }
+      } catch (_) {}
+    }
+
+    const voters: PublicationRatingVoter[] = data.map((item: any) => {
+      const userInfo = userMap[item.user_uid] || {};
+      return {
+        id: item.id,
+        user_uid: item.user_uid,
+        stars: Number(item.stars),
+        created_at: item.created_at,
+        user_display_name: userInfo.display_name || item.user_display_name || 'Usuario',
+        user_avatar_url: userInfo.photo_url || item.user_avatar_url || null,
+        user_username: item.user_username || null,
+        country_code: userInfo.country_code || null,
+      };
+    });
+
+    const total = count || voters.length;
+    return {
+      voters,
+      hasMore: to + 1 < total,
+      totalCount: total
+    };
+  } catch (err) {
+    console.warn('Error al cargar lista de calificaciones de publicación:', err);
+    return { voters: [], hasMore: false, totalCount: 0 };
+  }
+}
+
 /**
  * Obtiene la reseña previa del usuario actual para una publicación específica (si ya votó o comentó)
  */

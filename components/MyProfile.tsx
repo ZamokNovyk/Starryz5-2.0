@@ -44,7 +44,8 @@ import {
   Send,
   Bookmark,
   Pencil,
-  Check
+  Check,
+  Share2
 } from 'lucide-react';
 import { 
   getUserProfessorSubscriptions, 
@@ -338,6 +339,39 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
       setCrushesCount(res.newCount);
     } catch (err) {
       console.error('Error al votar crush:', err);
+    }
+  };
+
+  const handleShareProfile = async () => {
+    const targetUid = uid || user?.uid;
+    if (!targetUid) return;
+    const profileUrl = `${window.location.origin}/perfil/${targetUid}`;
+    const profileName = (() => {
+      const n = dbUser?.nombres || '';
+      const ap = (dbUser as any)?.apellido_paterno || '';
+      const am = (dbUser as any)?.apellido_materno || '';
+      const full = [n, ap, am].filter(Boolean).join(' ');
+      return full || dbUser?.display_name || 'Perfil de Starryz 5';
+    })();
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: profileName,
+          text: `¡Mira el perfil de ${profileName} en Starryz 5!`,
+          url: profileUrl,
+        });
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') {
+          await navigator.clipboard.writeText(profileUrl);
+          setSuccessMsg('¡Enlace de perfil copiado al portapapeles!');
+          setTimeout(() => setSuccessMsg(null), 3000);
+        }
+      }
+    } else {
+      await navigator.clipboard.writeText(profileUrl);
+      setSuccessMsg('¡Enlace de perfil copiado al portapapeles!');
+      setTimeout(() => setSuccessMsg(null), 3000);
     }
   };
 
@@ -1665,6 +1699,17 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   <span>{t('action.change_photo', 'Cambiar Foto')}</span>
                 </button>
               )}
+
+              {/* Botón Compartir Perfil */}
+              <button
+                type="button"
+                onClick={handleShareProfile}
+                className="px-2.5 py-0.5 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 hover:border-sky-400 text-[10px] font-bold text-zinc-400 hover:text-white transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                title="Compartir perfil"
+              >
+                <Share2 className="w-3 h-3 text-sky-400" />
+                <span>{t('action.share', 'Compartir')}</span>
+              </button>
             </div>
 
             {/* Descripción / Bio editable */}
