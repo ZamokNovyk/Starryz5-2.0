@@ -33,7 +33,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const pubId = url.searchParams.get('pub');
 
   const supabaseUrl = env.VITE_SUPABASE_URL || 'https://towabrmgsbkjakbymuoy.supabase.co';
-  const supabaseKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvd2Ficm1nc2JramFrYnltdW95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjMzNzkxMjcsImV4cCI6MjAzODk1NTEyN30.placeholder';
+  const supabaseKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvd2Ficm1nc2JramFrYnltdW95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MjQyMTYsImV4cCI6MjEwMjUwMDIxNn0.8AKjkS1T4VxwDD15mNXt828-rn9zaRQ7zwQEwQc_1J4';
 
   let title = 'Perfil de Starryz 5';
   let desc = 'Mira el perfil en la red social universitaria Starryz 5.';
@@ -43,7 +43,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     // Si viene con un parámetro de publicación (?pub=ID), priorizamos los datos de la publicación
     if (pubId) {
       const pubRes = await fetch(
-        `${supabaseUrl.replace(/\/$/, '')}/rest/v1/user_publicaciones?id=eq.${encodeURIComponent(pubId)}&select=*`,
+        `${supabaseUrl.replace(/\/$/, '')}/rest/v1/user-publications?id=eq.${encodeURIComponent(pubId)}&select=*`,
         {
           headers: {
             apikey: supabaseKey,
@@ -57,7 +57,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         const pubs: any[] = await pubRes.json();
         if (pubs && pubs.length > 0) {
           const pub = pubs[0];
-          title = `Publicación de ${pub.user_display_name || 'usuario'} en Starryz 5`;
+          title = `Publicación de ${pub.user_display_name || 'Estudiante'} en Starryz 5`;
           desc = pub.description || 'Publicación compartida en Starryz 5.';
           if (pub.image_url) {
             photoUrl = pub.image_url;

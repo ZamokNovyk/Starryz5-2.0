@@ -623,19 +623,11 @@ export default function PublicationCard({
     }
   };
 
-  // Abrir modal de compartir y actualizar Open Graph
-  const handleOpenShare = () => {
+  // Abrir modal de compartir o compartir nativo directamente
+  const handleOpenShare = async () => {
     const shareUrl = `${window.location.origin}/perfil/${publication.user_id}?pub=${publication.id}`;
-    const shareTitle = `${displayName} en Starryz 5: "${publication.description ? publication.description.substring(0, 60) : 'Publicación'}"`;
-    const shareDesc = publication.description || 'Mira esta foto y reseña en la red social universitaria Starryz 5.';
-
-    // Actualizar dinámicamente etiquetas Open Graph para previsualizaciones en redes sociales
-    updateOpenGraphMeta({
-      title: shareTitle,
-      description: shareDesc,
-      imageUrl: publication.image_url,
-      url: shareUrl,
-    });
+    const shareTitle = `Publicación de ${displayName} en Starryz 5`;
+    const shareDesc = publication.description || 'Mira esta foto en Starryz 5';
 
     // Incrementar contador de compartidos
     incrementPublicationShare(publication.id).then((newShares) => {
@@ -643,6 +635,22 @@ export default function PublicationCard({
       else setSharesCount((prev) => prev + 1);
     });
 
+    // Si el navegador soporta compartir nativo (como en celulares o Windows Compartir Vínculo),
+    // lanzamos directamente la ventana nativa idéntica a "Compartir Perfil"
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: `¡Mira esta publicación de ${displayName} en Starryz 5!`,
+          url: shareUrl,
+        });
+        return;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return; // Cancelado por el usuario
+      }
+    }
+
+    // Fallback: abrir modal estilizado si no hay Web Share API o falla
     setShowShareModal(true);
   };
 
