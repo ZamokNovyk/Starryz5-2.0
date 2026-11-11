@@ -142,6 +142,7 @@ export default function EducationalCenterProfileView({
   onSelectStudent,
 }: EducationalCenterProfileViewProps) {
   const { user } = useAuth();
+  const { t } = useLanguage();
 
   const userClaimedStudentId = user?.claimed_student_id || (() => {
     try {
