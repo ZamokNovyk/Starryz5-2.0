@@ -47,6 +47,8 @@ import {
   Check,
   Share2
 } from 'lucide-react';
+import { NosediveScore } from './NosediveScore';
+import ScoreDisplayModeModal from '@/components/Modals/ScoreDisplayModeModal';
 import { 
   getUserProfessorSubscriptions, 
   removeProfessorNotificationSubscription, 
@@ -115,6 +117,12 @@ interface SupabaseUser {
   saved_mode?: 'solo_yo' | 'todos' | null;
   interactions_mode?: 'solo_yo' | 'todos' | null;
   subscriptions_mode?: 'solo_yo' | 'todos' | null;
+  score?: number | null;
+  total_ratings?: number | null;
+  pub_score?: number | null;
+  pub_total_ratings?: number | null;
+  profile_posts?: number | null;
+  score_display_mode?: 'profile' | 'combined' | null;
 }
 
 function parseFullName(fullName: string): { nombres: string; apellidoPaterno: string; apellidoMaterno: string } {
@@ -173,6 +181,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [profileTab, setProfileTab] = useState<'info' | 'interactions' | 'subscriptions' | 'admin'>('info');
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isViewPhotoModalOpen, setIsViewPhotoModalOpen] = useState(false);
+  const [isScoreModeModalOpen, setIsScoreModeModalOpen] = useState(false);
 
   // Estados para edición de descripción
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -969,7 +978,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           }
 
           const realScore = totalVotesCount > 0 
-            ? Number((sumStars / totalVotesCount).toFixed(1)) 
+            ? parseFloat((sumStars / totalVotesCount).toFixed(4)) 
             : (Number((dbUser as any)?.score) || studentData.score || 0.0);
           const realTotalRatings = totalVotesCount > 0 
             ? totalVotesCount 
@@ -1652,14 +1661,38 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               );
             })()}
 
-            {/* Badge de Puntuación Abajo */}
-            <div 
-              className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-black/90 border border-amber-400/80 text-amber-400 flex items-center justify-center gap-1 z-20 shadow-lg text-[11px] font-black tracking-tight select-none whitespace-nowrap"
-              title={`Calificación general: ${Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0).toFixed(1)} / 5.0`}
-            >
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
-              <span>{Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0).toFixed(1)}</span>
-            </div>
+            {/* Badge de Puntuación Abajo (Estilo Nosedive, responsive para móviles y con modal de configuración) */}
+            {(() => {
+              const userScoreDisplayMode = (dbUser as any)?.score_display_mode || 'profile';
+              const userProfileScore = Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0);
+              const userProfilePosts = Number((dbUser as any)?.profile_posts) || userProfileScore;
+              const avatarDisplayedScore = userScoreDisplayMode === 'combined' && userProfilePosts > 0
+                ? userProfilePosts
+                : userProfileScore;
+
+              return (
+                <div 
+                  className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/95 border border-amber-400 text-amber-400 flex items-center justify-center gap-1.5 z-20 shadow-xl select-none whitespace-nowrap transition-all ${
+                    isSelfProfile 
+                      ? 'cursor-pointer hover:scale-105 active:scale-95 hover:border-amber-300' 
+                      : ''
+                  }`}
+                  onClick={isSelfProfile ? () => setIsScoreModeModalOpen(true) : undefined}
+                  title={
+                    isSelfProfile 
+                      ? "Toca para configurar si muestras la calificación de tu perfil o perfil + publicaciones" 
+                      : `Calificación general: ${avatarDisplayedScore.toFixed(4)}`
+                  }
+                >
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                  <NosediveScore 
+                    score={avatarDisplayedScore} 
+                    className="text-xs sm:text-sm font-mono font-black tracking-tight"
+                    subClassName="text-[0.82em] font-bold opacity-85 ml-0.5 tracking-normal text-amber-300"
+                  />
+                </div>
+              );
+            })()}
           </div>
 
           {/* INFORMACIÓN DEL USUARIO */}
@@ -2179,17 +2212,18 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                         OPORTUNIDADES: {opportunitiesLeft}/5
                       </div>
                     )}
-                    <div className="px-3 py-1 rounded-full bg-[#eab308]/15 border border-[#eab308]/30 text-[#eab308] text-xs font-black tracking-wider uppercase">
-                      ★ {(claimedStudent?.score || (dbUser as any)?.score || 0).toFixed(1)} / 5.0
-                    </div>
                   </div>
                 </div>
 
                 <div className="flex flex-col md:flex-row items-center gap-8 pt-2">
                   <div className="bg-[#0f0f0f] border border-zinc-800/40 rounded-2xl p-6 text-center w-full md:w-52 space-y-3 shadow-lg">
-                    <span className="block text-5xl font-black text-[#eab308] tracking-tighter">
-                      {(claimedStudent?.score || (dbUser as any)?.score || 0).toFixed(1)}
-                    </span>
+                    <div className="flex justify-center items-baseline text-[#eab308]">
+                      <NosediveScore 
+                        score={claimedStudent?.score || (dbUser as any)?.score || 0}
+                        className="text-5xl font-black tracking-tighter"
+                        subClassName="text-xl font-bold opacity-75 ml-1 tracking-tight text-amber-300/80"
+                      />
+                    </div>
                     <div className="flex items-center justify-center gap-1">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Star 
@@ -2240,7 +2274,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                       ¿Conoces a {dbUser?.display_name || user?.displayName || 'este usuario'}? ¡Deja tu calificación de estrellas!
                     </p>
 
-                    {/* Alerta de enfriamiento distópico o límite alcanzado */}
+                    {/* Alerta de enfriamiento anti-spam o límite alcanzado */}
                     {opportunitiesLeft === 0 ? (
                       <div className="space-y-3">
                         <div className="flex items-center justify-center gap-2 opacity-30 select-none">
@@ -2282,7 +2316,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                             Próximo voto disponible en: {Math.floor(profileCooldownSeconds / 60)}:{(profileCooldownSeconds % 60).toString().padStart(2, '0')} min
                           </p>
                           <p className="text-[10px] text-zinc-500">
-                            Regla distópica: 30 minutos de espera entre votos a una misma persona ({opportunitiesLeft} restantes hoy).
+                            Regla anti-spam: 30 minutos de espera entre votos a una misma persona ({opportunitiesLeft} restantes hoy).
                           </p>
                         </div>
                       </div>
@@ -3661,6 +3695,23 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal para configurar el modo de calificación visible (Perfil vs Perfil + Publicaciones) */}
+      {user && isScoreModeModalOpen && (
+        <ScoreDisplayModeModal
+          isOpen={isScoreModeModalOpen}
+          onClose={() => setIsScoreModeModalOpen(false)}
+          userId={user.uid}
+          currentMode={((dbUser as any)?.score_display_mode || 'profile') as any}
+          profileScore={Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0)}
+          profilePostsScore={Number((dbUser as any)?.profile_posts) || Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0)}
+          pubScore={Number((dbUser as any)?.pub_score) || 0}
+          onModeSaved={(newMode) => {
+            setDbUser((prev: any) => prev ? { ...prev, score_display_mode: newMode } : prev);
+            setSuccessMsg('¡Modo de calificación actualizado con éxito!');
+          }}
+        />
       )}
 
     </div>

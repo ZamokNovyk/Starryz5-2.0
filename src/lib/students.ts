@@ -39,6 +39,10 @@ export interface Student {
   claimed_by_uid?: string;
   claimed_at?: string;
   claimed_by_name?: string;
+  pub_score?: number;
+  pub_total_ratings?: number;
+  profile_posts?: number;
+  score_display_mode?: 'profile' | 'combined';
 }
 
 export interface CreateStudentData {
@@ -242,15 +246,22 @@ export async function getStudentById(slugOrUid: string): Promise<Student | null>
       // con nombre o foto actualizada para mostrar siempre los datos más frescos
       let latestName = data.nombre_completo;
       let latestAvatar = data.avatar_url;
+      let userScoreDisplayMode: 'profile' | 'combined' = 'profile';
+      let userProfilePosts = data.profile_posts;
+      let userPubScore = data.pub_score;
+
       if (data.claimed_by_uid) {
         try {
           const { data: linkedUser } = await supabase
             .from('users')
-            .select('display_name, photo_url')
+            .select('display_name, photo_url, score_display_mode, profile_posts, pub_score')
             .eq('id', data.claimed_by_uid)
             .maybeSingle();
           if (linkedUser?.display_name) latestName = linkedUser.display_name;
           if (linkedUser?.photo_url) latestAvatar = linkedUser.photo_url;
+          if (linkedUser?.score_display_mode) userScoreDisplayMode = linkedUser.score_display_mode;
+          if (typeof linkedUser?.profile_posts === 'number') userProfilePosts = Number(linkedUser.profile_posts);
+          if (typeof linkedUser?.pub_score === 'number') userPubScore = Number(linkedUser.pub_score);
         } catch (e) {}
       }
 
@@ -266,6 +277,9 @@ export async function getStudentById(slugOrUid: string): Promise<Student | null>
         claimed_by_uid: data.claimed_by_uid || claim.uid,
         claimed_at: data.claimed_at || claim.at,
         claimed_by_name: data.claimed_by_name || claim.name,
+        score_display_mode: userScoreDisplayMode,
+        profile_posts: userProfilePosts,
+        pub_score: userPubScore,
       } as Student;
     }
 
@@ -304,6 +318,9 @@ export async function getStudentById(slugOrUid: string): Promise<Student | null>
           is_claimed: true,
           claimed_by_uid: userData.id,
           claimed_by_name: fullName,
+          score_display_mode: userData.score_display_mode || 'profile',
+          profile_posts: typeof userData.profile_posts === 'number' ? Number(userData.profile_posts) : undefined,
+          pub_score: typeof userData.pub_score === 'number' ? Number(userData.pub_score) : undefined,
         } as Student;
       }
     } catch (uErr) {
@@ -495,7 +512,7 @@ export async function claimStudentProfile(
     const tableCrushes = crushesRes.data ? crushesRes.data.length : 0;
     const revs = reviewsRes.data || [];
     const tableRatings = revs.length;
-    const tableScore = revs.length > 0 ? Number((revs.reduce((acc: number, r: any) => acc + (r.stars || 0), 0) / revs.length).toFixed(1)) : 0;
+    const tableScore = revs.length > 0 ? Number((revs.reduce((acc: number, r: any) => acc + (r.stars || 0), 0) / revs.length).toFixed(4)) : 0;
 
     // Preservar siempre los contadores del estudiante sin ponerlos en 0
     const actualFans = Math.max(student.fans_count || 0, tableFans);
@@ -1216,20 +1233,12 @@ export async function toggleStudentInteraction(
 }
 
 /**
- * Calcula el multiplicador del voto según el nivel/promedio de estrellas del votante (estilo Nosedive).
- * - Élite (4.50 - 5.00): x3.0
- * - Alto (4.00 - 4.49): x1.5
- * - Estándar (3.50 - 3.99): x1.0
- * - Bajo (3.00 - 3.49): x0.5
- * - Marginado (< 3.00): x0.1
+ * Ponderación de voto según score del usuario.
+ * Para la fase de lanzamiento, todos los usuarios tienen el mismo peso estándar (x1.0)
+ * para que todos los votos cuenten de forma limpia, directa y democrática (1 voto = 1 voto).
  */
-export function getVoterMultiplier(score: number | null | undefined): { multiplier: number; level: string } {
-  const s = typeof score === 'number' && !isNaN(score) ? score : 3.5;
-  if (s >= 4.50) return { multiplier: 3.0, level: 'Élite' };
-  if (s >= 4.00) return { multiplier: 1.5, level: 'Alto' };
-  if (s >= 3.50) return { multiplier: 1.0, level: 'Estándar' };
-  if (s >= 3.00) return { multiplier: 0.5, level: 'Bajo' };
-  return { multiplier: 0.1, level: 'Marginado' };
+export function getVoterMultiplier(score?: number | null | undefined): { multiplier: number; level: string } {
+  return { multiplier: 1.0, level: 'Normal' };
 }
 
 export interface TodayStudentVotesInfo {
@@ -1683,7 +1692,7 @@ export async function submitStudentVote(
 
     const cleanStars = Math.max(1, Math.min(5, Math.round(stars)));
 
-    // Obtener el score actual del votante para determinar su multiplicador distópico
+    // Obtener el score actual del votante para determinar su multiplicador ponderado
     let voterScore = 3.5;
     try {
       const { data: voterUser } = await supabase
@@ -1715,7 +1724,7 @@ export async function submitStudentVote(
       return { success: false, new_score: 0, total_ratings: 0, error: insertErr.message };
     }
 
-    // 2. Calcular nuevo promedio ponderado con multiplicador distópico
+    // 2. Calcular nuevo promedio ponderado con multiplicador según reputación
     // Obtenemos todos los votos registrados para este perfil
     const uuids = rawIds.filter(id => UUID_REGEX.test(id));
     const nonUuids = rawIds.filter(id => !UUID_REGEX.test(id));
@@ -1772,7 +1781,7 @@ export async function submitStudentVote(
 
     const totalRatings = allVotes.length > 0 ? allVotes.length : 1;
     const computedAverage = totalWeights > 0 ? (weightedSum / totalWeights) : cleanStars;
-    const newScore = parseFloat(Math.min(5.0, Math.max(1.0, computedAverage)).toFixed(1));
+    const newScore = parseFloat(Math.min(5.0, Math.max(1.0, computedAverage)).toFixed(4));
 
     const stars1 = allVotes.filter(v => Math.round(Number(v.stars)) === 1).length;
     const stars2 = allVotes.filter(v => Math.round(Number(v.stars)) === 2).length;
@@ -1788,7 +1797,23 @@ export async function submitStudentVote(
       5: stars5,
     };
 
-    const updatePayload = {
+    let userPubScore = 0;
+    try {
+      const targetUid = uuids[0];
+      if (targetUid) {
+        const { data: uInfo } = await supabase.from('users').select('pub_score').eq('id', targetUid).maybeSingle();
+        userPubScore = Number(uInfo?.pub_score) || 0;
+      }
+    } catch (e) {}
+
+    let profilePosts = newScore;
+    if (newScore > 0 && userPubScore > 0) {
+      profilePosts = parseFloat(((newScore + userPubScore) / 2).toFixed(4));
+    } else if (userPubScore > 0) {
+      profilePosts = userPubScore;
+    }
+
+    const updatePayload: any = {
       score: newScore,
       total_ratings: totalRatings,
       stars_1: stars1,
@@ -1796,6 +1821,7 @@ export async function submitStudentVote(
       stars_3: stars3,
       stars_4: stars4,
       stars_5: stars5,
+      profile_posts: profilePosts,
     };
 
     // Actualizar tabla 'users'

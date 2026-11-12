@@ -51,6 +51,7 @@ import {
 import { getFlagUrl } from '@/src/data/countries';
 import { useAuth } from '@/src/context/AuthContext';
 import PublicationRatingsModal from './PublicationRatingsModal';
+import { NosediveScore } from './NosediveScore';
 
 interface PublicationCardProps {
   publication: UserPublication;
@@ -96,7 +97,7 @@ export default function PublicationCard({
 
   // Estados de calificación
   const [publicationAvg, setPublicationAvg] = useState<string>(
-    publication.rating_avg && publication.rating_avg > 0 ? publication.rating_avg.toFixed(2) : '0.00'
+    publication.rating_avg && publication.rating_avg > 0 ? Number(publication.rating_avg).toFixed(4) : '0.0000'
   );
   const [publicationVotesCount, setPublicationVotesCount] = useState<number>(
     (publication.star_1 || 0) +
@@ -260,6 +261,8 @@ export default function PublicationCard({
   useEffect(() => {
     if (!publication.id || typeof window === 'undefined') return;
 
+    const retentionSessionKey = `retention_viewed_${publication.id}`;
+
     // Función para sincronizar y despachar la retención pendiente si supera 1.0s
     const flushRetention = () => {
       if (isVisibleRef.current && startTimeRef.current !== null) {
@@ -271,8 +274,15 @@ export default function PublicationCard({
       const totalSeconds = accumulatedMsRef.current / 1000;
       // Solo registra como retención válida si superó al menos 1.0 segundo
       if (totalSeconds >= 1.0) {
+        // En una misma sesión (sin recargar la página), solo se suma +1 al contador de vistas de retención una vez.
+        // Si el usuario sube y baja varias veces, los segundos se siguen acumulando pero no infla las vistas.
+        const isFirstViewInSession = typeof window !== 'undefined' && !sessionStorage.getItem(retentionSessionKey);
+        if (isFirstViewInSession && typeof window !== 'undefined') {
+          sessionStorage.setItem(retentionSessionKey, '1');
+        }
+
         accumulatedMsRef.current = 0; // Resetear acumulador
-        recordPublicationRetention(publication.id, totalSeconds).then((res) => {
+        recordPublicationRetention(publication.id, totalSeconds, isFirstViewInSession).then((res) => {
           if (res && typeof res.newAvg === 'number') {
             setRetentionAvg(res.newAvg);
           }
@@ -388,7 +398,7 @@ export default function PublicationCard({
           setUserRatingRecord(res.updatedReview);
         }
         if (typeof res.rating_avg === 'number') {
-          setPublicationAvg(res.rating_avg.toFixed(2));
+          setPublicationAvg(res.rating_avg.toFixed(4));
         }
         if (typeof res.total_votes === 'number') {
           setPublicationVotesCount(res.total_votes);
@@ -475,7 +485,7 @@ export default function PublicationCard({
           }
         }
         if (typeof res.rating_avg === 'number') {
-          setPublicationAvg(res.rating_avg.toFixed(2));
+          setPublicationAvg(res.rating_avg.toFixed(4));
         }
         if (typeof res.total_votes === 'number') {
           setPublicationVotesCount(res.total_votes);
@@ -618,7 +628,7 @@ export default function PublicationCard({
           setReviewStars(res.updatedReview.stars);
         }
         if (typeof res.rating_avg === 'number') {
-          setPublicationAvg(res.rating_avg.toFixed(2));
+          setPublicationAvg(res.rating_avg.toFixed(4));
         }
         if (typeof res.total_votes === 'number') {
           setPublicationVotesCount(res.total_votes);
@@ -671,7 +681,7 @@ export default function PublicationCard({
           setReviewStars(null);
         }
         if (typeof res.rating_avg === 'number') {
-          setPublicationAvg(res.rating_avg.toFixed(2));
+          setPublicationAvg(res.rating_avg.toFixed(4));
         }
         if (typeof res.total_votes === 'number') {
           setPublicationVotesCount(res.total_votes);
@@ -1069,7 +1079,11 @@ export default function PublicationCard({
           title="Ver quiénes calificaron esta publicación"
         >
           <Star className="w-3.5 h-3.5 fill-[#facc15] text-[#facc15] group-hover:scale-110 transition-transform" />
-          <span className="font-mono text-white text-xs">{publicationAvg}</span>
+          <NosediveScore 
+            score={publicationAvg} 
+            className="text-white text-xs font-mono font-bold"
+            subClassName="text-[0.72em] font-medium opacity-70 ml-0.5 tracking-normal text-zinc-300"
+          />
           <span className="text-[11px] text-zinc-400 group-hover:text-zinc-200 font-normal">({publicationVotesCount} {publicationVotesCount === 1 ? 'voto' : 'votos'})</span>
         </button>
 

@@ -59,6 +59,8 @@ import { shareContent } from '@/src/lib/share';
 import StudentTrendsEngine from '@/src/components/StudentTrendsEngine';
 import GenderBadge from '@/components/GenderBadge';
 import { stripBiographyMetadata } from '@/src/lib/profileReports';
+import { NosediveScore } from '@/components/NosediveScore';
+import ScoreDisplayModeModal from '@/components/Modals/ScoreDisplayModeModal';
 
 interface StudentProfileProps {
   slug: string;
@@ -97,6 +99,7 @@ export default function StudentProfile({
   const [isSubscribedToNotifications, setIsSubscribedToNotifications] = useState(false);
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
   const [claimModalOpen, setClaimModalOpen] = useState(false);
+  const [isScoreModeModalOpen, setIsScoreModeModalOpen] = useState(false);
 
   // Verificación de pertenencia y restricciones de reclamo único
   const userClaimedStudentId = user?.claimed_student_id || (() => {
@@ -133,7 +136,7 @@ export default function StudentProfile({
   // Views Count State
   const [viewsCount, setViewsCount] = useState(0);
 
-  // Distópico: Cooldown de 30 minutos y multiplicador de impacto
+  // Cooldown de 30 minutos y multiplicador de impacto ponderado
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [canVoteCooldown, setCanVoteCooldown] = useState(true);
   const [voteImpactMsg, setVoteImpactMsg] = useState<{ text: string; multiplier: number; level: string } | null>(null);
@@ -804,14 +807,12 @@ export default function StudentProfile({
           [stars]: (prev[stars] || 0) + 1
         }));
 
-        if (result.multiplier && result.voter_level) {
-          setVoteImpactMsg({
-            text: `Voto ponderado como ${result.voter_level}`,
-            multiplier: result.multiplier,
-            level: result.voter_level
-          });
-          setTimeout(() => setVoteImpactMsg(null), 6000);
-        }
+        setVoteImpactMsg({
+          text: '¡Calificación registrada con éxito!',
+          multiplier: 1.0,
+          level: 'Normal'
+        });
+        setTimeout(() => setVoteImpactMsg(null), 4000);
 
         promptNotificationOnAction('rating');
       } else if (result && result.error) {
@@ -1047,11 +1048,47 @@ export default function StudentProfile({
               </div>
             </div>
 
-            {/* Score badge abajo */}
-            <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-black/90 border border-amber-400/80 text-amber-400 flex items-center justify-center gap-1 z-20 shadow-lg text-[11px] font-black tracking-tight select-none whitespace-nowrap">
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
-              <span>{studentScore.toFixed(1)}</span>
-            </div>
+            {/* Score badge abajo (Estilo Nosedive, responsive para móviles y con modal) */}
+            {(() => {
+              const isOwnStudentProfile = Boolean(
+                user && student && (
+                  student.id === user.uid || 
+                  student.claimed_by_uid === user.uid ||
+                  userClaimedStudentId === student.id
+                )
+              );
+              const studentScoreMode = student?.score_display_mode || 'profile';
+              const profileScoreVal = studentScore || 0;
+              const profilePostsVal = typeof student?.profile_posts === 'number' && student.profile_posts > 0 
+                ? student.profile_posts 
+                : profileScoreVal;
+              const displayedScore = studentScoreMode === 'combined' && profilePostsVal > 0 
+                ? profilePostsVal 
+                : profileScoreVal;
+
+              return (
+                <div 
+                  className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/95 border border-amber-400 text-amber-400 flex items-center justify-center gap-1.5 z-20 shadow-xl select-none whitespace-nowrap transition-all ${
+                    isOwnStudentProfile 
+                      ? 'cursor-pointer hover:scale-105 active:scale-95 hover:border-amber-300' 
+                      : ''
+                  }`}
+                  onClick={isOwnStudentProfile ? () => setIsScoreModeModalOpen(true) : undefined}
+                  title={
+                    isOwnStudentProfile 
+                      ? "Toca para configurar si muestras la calificación de tu perfil o perfil + publicaciones" 
+                      : `Calificación general: ${displayedScore.toFixed(4)}`
+                  }
+                >
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                  <NosediveScore 
+                    score={displayedScore} 
+                    className="text-xs sm:text-sm font-mono font-black tracking-tight"
+                    subClassName="text-[0.82em] font-bold opacity-85 ml-0.5 tracking-normal text-amber-300"
+                  />
+                </div>
+              );
+            })()}
           </div>
 
           {/* Información del estudiante */}
@@ -1202,11 +1239,15 @@ export default function StudentProfile({
               </div>
 
               <div className="flex flex-col md:flex-row items-center gap-8">
-                {/* Bloque Izquierdo con el puntaje general promedio */}
+                {/* Bloque Izquierdo con el puntaje general promedio (Estilo Nosedive) */}
                 <div className="bg-[#050505] border border-zinc-800/20 rounded-2xl p-6 text-center w-full md:w-48 space-y-3">
-                  <span className="block text-5xl font-black text-[#eab308] tracking-tighter">
-                    {studentScore.toFixed(1)}
-                  </span>
+                  <div className="flex justify-center items-baseline text-[#eab308]">
+                    <NosediveScore 
+                      score={studentScore}
+                      className="text-5xl font-black tracking-tighter"
+                      subClassName="text-xl font-bold opacity-75 ml-1 tracking-tight text-amber-300/80"
+                    />
+                  </div>
                   
                   {/* Estrellas visuales */}
                   <div className="flex items-center justify-center gap-1">
@@ -1271,14 +1312,14 @@ export default function StudentProfile({
                       ¿Conoces a {student.nombre}? ¡Deja tu calificación de estrellas!
                     </p>
 
-                    {/* Indicador de impacto distópico tras votar */}
+                    {/* Mensaje de confirmación tras votar */}
                     {voteImpactMsg && (
-                      <div className="p-3 bg-[#eab308]/10 border border-[#eab308]/30 rounded-xl text-center animate-in fade-in zoom-in-95 duration-200">
-                        <span className="text-[11px] font-black uppercase text-[#eab308] tracking-wider">
-                          ⭐ Impacto Distópico: {voteImpactMsg.level} (x{voteImpactMsg.multiplier.toFixed(1)})
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-center animate-in fade-in zoom-in-95 duration-200">
+                        <span className="text-[11px] font-black uppercase text-emerald-400 tracking-wider">
+                          ⭐ ¡Calificación registrada con éxito!
                         </span>
                         <p className="text-[10px] text-zinc-400 mt-0.5">
-                          Tu calificación se ponderó con tu estatus social actual.
+                          Tu voto ha sido añadido directamente al promedio de {student.nombre}.
                         </p>
                       </div>
                     )}
@@ -1324,7 +1365,7 @@ export default function StudentProfile({
                             Próximo voto disponible en: {Math.floor(cooldownSeconds / 60)}:{(cooldownSeconds % 60).toString().padStart(2, '0')} min
                           </p>
                           <p className="text-[10px] text-zinc-500">
-                            Regla distópica: 30 minutos de espera entre votos a la misma persona ({opportunitiesLeft} restantes hoy).
+                            Regla anti-spam: 30 minutos de espera entre votos a la misma persona ({opportunitiesLeft} restantes hoy).
                           </p>
                         </div>
                       </div>
@@ -2236,6 +2277,22 @@ export default function StudentProfile({
           student={student}
           onSuccess={(updatedStudent) => {
             setStudent(updatedStudent);
+          }}
+        />
+      )}
+
+      {/* Modal para configurar el modo de calificación visible (Perfil vs Perfil + Publicaciones) */}
+      {student && user && isScoreModeModalOpen && (
+        <ScoreDisplayModeModal
+          isOpen={isScoreModeModalOpen}
+          onClose={() => setIsScoreModeModalOpen(false)}
+          userId={user.uid}
+          currentMode={(student.score_display_mode || 'profile') as any}
+          profileScore={studentScore || 0}
+          profilePostsScore={typeof student.profile_posts === 'number' && student.profile_posts > 0 ? student.profile_posts : (studentScore || 0)}
+          pubScore={typeof student.pub_score === 'number' ? student.pub_score : 0}
+          onModeSaved={(newMode) => {
+            setStudent((prev) => prev ? { ...prev, score_display_mode: newMode } : prev);
           }}
         />
       )}

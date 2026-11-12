@@ -565,7 +565,7 @@ export async function recalculatePublicationMetrics(publicationId: string): Prom
     const starVotes = reviewsList.filter((r: any) => typeof r.stars === 'number' && r.stars >= 1 && r.stars <= 5);
     const totalVotes = starVotes.length;
     const sumStars = starVotes.reduce((acc: number, r: any) => acc + Number(r.stars), 0);
-    const newRatingAvg = totalVotes > 0 ? parseFloat((sumStars / totalVotes).toFixed(2)) : 0;
+    const newRatingAvg = totalVotes > 0 ? parseFloat((sumStars / totalVotes).toFixed(4)) : 0;
     const commentsCount = reviewsList.filter((r: any) => Boolean(r.comment && r.comment.trim())).length;
 
     const star1 = starVotes.filter((r: any) => Number(r.stars) === 1).length;
@@ -587,6 +587,19 @@ export async function recalculatePublicationMetrics(publicationId: string): Prom
         comments_count: commentsCount,
       })
       .eq('id', publicationId);
+
+    // Recalcular la reputación global de publicaciones en 'users' del autor
+    try {
+      const { data: pubData } = await supabase
+        .from('user-publications')
+        .select('user_id')
+        .eq('id', publicationId)
+        .maybeSingle();
+
+      if (pubData?.user_id) {
+        await recalculateAuthorPublicationReputation(pubData.user_id);
+      }
+    } catch (e) {}
 
     return {
       rating_avg: newRatingAvg,
@@ -610,6 +623,73 @@ export async function recalculatePublicationMetrics(publicationId: string): Prom
       star_4: 0,
       star_5: 0,
     };
+  }
+}
+
+/**
+ * Recalcula y actualiza en 'users' las columnas acumuladas de publicaciones:
+ * pub_stars_1..5, pub_total_ratings, pub_score y profile_posts.
+ */
+export async function recalculateAuthorPublicationReputation(authorUserId: string): Promise<void> {
+  if (!authorUserId) return;
+  try {
+    const { data: pubs } = await supabase
+      .from('user-publications')
+      .select('star_1, star_2, star_3, star_4, star_5')
+      .eq('user_id', authorUserId);
+
+    const pubsList = pubs || [];
+    let pubS1 = 0;
+    let pubS2 = 0;
+    let pubS3 = 0;
+    let pubS4 = 0;
+    let pubS5 = 0;
+
+    for (const p of pubsList) {
+      pubS1 += Number(p.star_1 || 0);
+      pubS2 += Number(p.star_2 || 0);
+      pubS3 += Number(p.star_3 || 0);
+      pubS4 += Number(p.star_4 || 0);
+      pubS5 += Number(p.star_5 || 0);
+    }
+
+    const pubTotal = pubS1 + pubS2 + pubS3 + pubS4 + pubS5;
+    const pubWeighted = (1 * pubS1) + (2 * pubS2) + (3 * pubS3) + (4 * pubS4) + (5 * pubS5);
+    const pubScore = pubTotal > 0 ? parseFloat((pubWeighted / pubTotal).toFixed(4)) : 0;
+
+    // Obtener el score de perfil actual de 'users'
+    const { data: userData } = await supabase
+      .from('users')
+      .select('score')
+      .eq('id', authorUserId)
+      .maybeSingle();
+
+    const profileScore = Number(userData?.score) || 0;
+
+    let profilePosts = 0;
+    if (profileScore > 0 && pubScore > 0) {
+      profilePosts = parseFloat(((profileScore + pubScore) / 2).toFixed(4));
+    } else if (profileScore > 0) {
+      profilePosts = profileScore;
+    } else if (pubScore > 0) {
+      profilePosts = pubScore;
+    }
+
+    await supabase
+      .from('users')
+      .update({
+        pub_stars_1: pubS1,
+        pub_stars_2: pubS2,
+        pub_stars_3: pubS3,
+        pub_stars_4: pubS4,
+        pub_stars_5: pubS5,
+        pub_total_ratings: pubTotal,
+        pub_score: pubScore,
+        profile_posts: profilePosts,
+      })
+      .eq('id', authorUserId);
+  } catch (err) {
+    console.warn('[Publications] Error al recalcular reputación acumulada de publicaciones:', err);
   }
 }
 
@@ -1320,7 +1400,8 @@ export async function incrementPublicationShare(publicationId: string): Promise<
  */
 export async function recordPublicationRetention(
   publicationId: string,
-  seconds: number
+  seconds: number,
+  incrementView: boolean = true
 ): Promise<{ newAvg: number; newTotalSeconds: number; newViewsCount: number } | null> {
   if (!publicationId || typeof seconds !== 'number' || seconds < 1) return null;
 
@@ -1328,10 +1409,11 @@ export async function recordPublicationRetention(
   const cleanSeconds = Number(Math.min(Math.max(seconds, 1.0), 45.0).toFixed(2));
 
   try {
-    // 1. Intentar RPC atómica en Supabase
+    // 1. Intentar RPC atómica en Supabase pasando p_increment_view
     const { data, error } = await supabase.rpc('record_publication_retention', {
       p_publication_id: publicationId,
       p_seconds: cleanSeconds,
+      p_increment_view: incrementView,
     });
 
     if (!error && Array.isArray(data) && data.length > 0) {
@@ -1359,7 +1441,7 @@ export async function recordPublicationRetention(
     const currentCount = Number(currentData?.retention_views_count || 0);
 
     const newTotal = Number((currentTotal + cleanSeconds).toFixed(2));
-    const newCount = currentCount + 1;
+    const newCount = incrementView ? currentCount + 1 : Math.max(currentCount, 1);
     const newAvg = Number((newTotal / newCount).toFixed(2));
 
     await supabase
