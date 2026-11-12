@@ -970,6 +970,10 @@ export default function PublicationCard({
             <img
               src={avatarUrl}
               alt={displayName}
+              width={44}
+              height={44}
+              loading="lazy"
+              decoding="async"
               className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover border border-[#3b3d4a] ring-2 ring-black shadow-md"
               onError={(e) => {
                 (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
@@ -1037,13 +1041,14 @@ export default function PublicationCard({
         </p>
       )}
 
-      {/* IMAGEN DE LA PUBLICACIÓN (Adaptable al tamaño natural para evitar imágenes cortadas) */}
-      <div className="relative rounded-2xl overflow-hidden bg-[#070709] border border-[#23242d] shadow-inner flex items-center justify-center p-1 sm:p-2">
+      {/* IMAGEN DE LA PUBLICACIÓN (Adaptable al tamaño natural para evitar imágenes cortadas y con reserva de altura para evitar CLS) */}
+      <div className="relative rounded-2xl overflow-hidden bg-[#070709] border border-[#23242d] shadow-inner flex items-center justify-center p-1 sm:p-2 min-h-[220px] sm:min-h-[340px]">
         <img
           src={publication.image_url}
           alt={publication.description ? publication.description.substring(0, 40) : 'Publicación'}
           className="w-auto max-w-full max-h-[85vh] sm:max-h-[750px] object-contain rounded-xl mx-auto shadow-md block"
           loading="lazy"
+          decoding="async"
         />
       </div>
 

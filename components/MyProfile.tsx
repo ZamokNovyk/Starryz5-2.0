@@ -728,15 +728,35 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   };
 
   useEffect(() => {
-    async function fetchUserData() {
-      const targetUid = uid || user?.uid;
-      if (!targetUid) {
-        setLoading(false);
-        return;
-      }
+    const targetUid = uid || user?.uid;
+    if (!targetUid) {
+      setLoading(false);
+      return;
+    }
 
+    // Cargar caché local instantáneo (Stale-While-Revalidate)
+    const USER_CACHE_KEY = `cache_user_profile_v2_${targetUid}`;
+    try {
+      if (typeof window !== 'undefined') {
+        const cached = sessionStorage.getItem(USER_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.dbUser) {
+            setDbUser(parsed.dbUser);
+            if (typeof parsed.knowCount === 'number') setKnowCount(parsed.knowCount);
+            if (typeof parsed.fanCount === 'number') setFanCount(parsed.fanCount);
+            if (typeof parsed.crushesCount === 'number') setCrushesCount(parsed.crushesCount);
+            setLoading(false); // Vista inmediata sin espera
+          }
+        }
+      }
+    } catch (e) {
+      console.debug('Error leyendo caché de usuario:', e);
+    }
+
+    async function fetchUserData() {
       try {
-        setLoading(true);
+        setLoading(prev => (dbUser ? false : prev));
         setErrorMsg(null);
 
         // Consultar los datos de la base de datos por email o por ID (UUID)
@@ -875,6 +895,19 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           setDescriptionInput(loadedDesc);
 
           setUsernameAvailability({ status: 'available', message: 'Nombre actual asignado' });
+
+          // Guardar snapshot en caché local
+          try {
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify({
+                dbUser: data,
+                knowCount: (data as any)?.knows_count || 0,
+                fanCount: (data as any)?.fans_count || 0,
+                crushesCount: (data as any)?.crushes_count || 0,
+                timestamp: Date.now()
+              }));
+            }
+          } catch (cErr) {}
         }
       } catch (err: any) {
         console.error('Error al obtener datos de Supabase:', err);
@@ -1567,6 +1600,50 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
     }
   };
 
+  if (loading && !dbUser) {
+    return (
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10 space-y-6 animate-pulse">
+        <div className="inline-flex items-center gap-2 text-xs font-bold text-zinc-500">
+          <ArrowLeft className="w-4 h-4" />
+          {t('profile.back_home', 'VOLVER A LA PÁGINA PRINCIPAL')}
+        </div>
+
+        {/* Banner Skeleton */}
+        <div className="bg-[#0b0b0e] border border-zinc-800/80 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-6">
+          <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-7 w-full lg:w-auto text-center sm:text-left z-10">
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl bg-zinc-900 border border-amber-500/20 shrink-0" />
+            <div className="space-y-3 w-full sm:w-auto">
+              <div className="h-8 bg-zinc-800/90 rounded-xl w-60 sm:w-72 mx-auto sm:mx-0" />
+              <div className="flex items-center justify-center sm:justify-start gap-2">
+                <div className="h-5 bg-zinc-800/60 rounded-md w-28" />
+                <div className="h-5 bg-zinc-800/60 rounded-md w-20" />
+              </div>
+              <div className="flex items-center justify-center sm:justify-start gap-4 pt-1">
+                <div className="h-4 bg-zinc-800/50 rounded w-20" />
+                <div className="h-4 bg-zinc-800/50 rounded w-16" />
+                <div className="h-4 bg-zinc-800/50 rounded w-16" />
+              </div>
+            </div>
+          </div>
+          <div className="w-full lg:w-64 h-28 bg-[#111216] border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-around" />
+        </div>
+
+        {/* Pestañas Skeleton */}
+        <div className="flex border-b border-zinc-800/80 gap-3">
+          <div className="h-10 w-28 bg-zinc-800/80 rounded-t-xl" />
+          <div className="h-10 w-28 bg-zinc-900 rounded-t-xl" />
+          <div className="h-10 w-28 bg-zinc-900 rounded-t-xl" />
+        </div>
+
+        {/* Contenido Skeleton */}
+        <div className="space-y-4 pt-2">
+          <div className="h-36 bg-[#0e0f13] border border-zinc-800/80 rounded-2xl" />
+          <div className="h-28 bg-[#0e0f13] border border-zinc-800/80 rounded-2xl" />
+        </div>
+      </div>
+    );
+  }
+
   if (!user && isOwnProfile) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 text-center space-y-6">
@@ -1618,6 +1695,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     onClick={() => setIsViewPhotoModalOpen(true)}
                     className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
                     referrerPolicy="no-referrer"
+                    loading="eager"
+                    fetchPriority="high"
+                    decoding="async"
+                    width={112}
+                    height={112}
                   />
                 ) : (
                   <div

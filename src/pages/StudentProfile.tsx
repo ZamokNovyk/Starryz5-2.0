@@ -194,99 +194,143 @@ export default function StudentProfile({
   }>({});
 
   useEffect(() => {
+    // 1. Cargar caché instantáneo de sesión (Stale-While-Revalidate)
+    const CACHE_KEY = `cache_student_v2_${slug}`;
+    try {
+      if (typeof window !== 'undefined') {
+        const cached = sessionStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.student) {
+            setStudent(parsed.student);
+            setStudentScore(parsed.student.score || 0.0);
+            setStudentTotalRatings(parsed.student.total_ratings || 0);
+            setViewsCount(parsed.viewsCount || 0);
+            setKnowCount(parsed.knowCount || 0);
+            setFanCount(parsed.fanCount || 0);
+            if (parsed.ratingBreakdown) setRatingBreakdown(parsed.ratingBreakdown);
+            if (typeof parsed.crushCount === 'number') setCrushCount(parsed.crushCount);
+            if (typeof parsed.hasCrushed === 'boolean') setHasCrushed(parsed.hasCrushed);
+            setLoading(false); // Renderizado instantáneo de 0ms
+          }
+        }
+      }
+    } catch (e) {
+      console.debug('Error leyendo caché de estudiante:', e);
+    }
+
     async function loadStudentAndInteractions() {
       try {
-        setLoading(true);
+        // Solo mostrar skeleton si aún no tenemos datos cacheados
+        setLoading(prev => (student ? false : prev));
+
         const data = await getStudentById(slug);
         if (data) {
+          const studentId = data.id || slug;
           setStudent(data);
           setStudentScore(data.score || 0.0);
           setStudentTotalRatings(data.total_ratings || 0);
           setViewsCount(typeof data.views_count === 'number' ? data.views_count : 0);
-          
-          // Cargar conteos totales de interacción de la BD
-          const counts = await getStudentInteractionCounts(data.id || slug);
-          setKnowCount(counts.knows);
-          setFanCount(counts.fan);
+          setLoading(false); // Desbloqueo inmediato del render principal
 
-          // Incrementar y sincronizar visualización con la BD
+          // Cargar métricas e interacciones en PARALELO para erradicar el waterfall
+          const [countsRes, vCountRes, breakdownRes, crushRes, msgsRes] = await Promise.allSettled([
+            getStudentInteractionCounts(studentId),
+            incrementStudentViews(studentId),
+            getStudentRatingBreakdown(studentId),
+            getStudentCrushStatus(studentId, user?.uid || ''),
+            getStudentLoveMessages(studentId, user?.uid)
+          ]);
+
+          let freshKnow = 0;
+          let freshFan = 0;
+          let freshBreakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+          let freshCrushCount = 0;
+          let freshHasCrushed = false;
+          let freshViews = typeof data.views_count === 'number' ? data.views_count : 0;
+
+          if (countsRes.status === 'fulfilled' && countsRes.value) {
+            setKnowCount(countsRes.value.knows);
+            setFanCount(countsRes.value.fan);
+            freshKnow = countsRes.value.knows;
+            freshFan = countsRes.value.fan;
+          }
+
+          if (vCountRes.status === 'fulfilled' && typeof vCountRes.value === 'number' && vCountRes.value > 0) {
+            freshViews = Math.max(freshViews, vCountRes.value);
+            setViewsCount(freshViews);
+          }
+
+          if (breakdownRes.status === 'fulfilled' && breakdownRes.value) {
+            freshBreakdown = breakdownRes.value;
+            setRatingBreakdown(freshBreakdown);
+          }
+
+          if (crushRes.status === 'fulfilled' && crushRes.value) {
+            freshCrushCount = crushRes.value.count;
+            freshHasCrushed = crushRes.value.hasCrushed;
+            setCrushCount(freshCrushCount);
+            setHasCrushed(freshHasCrushed);
+          }
+
+          if (msgsRes.status === 'fulfilled' && msgsRes.value) {
+            setLoveMessages(msgsRes.value);
+          }
+
+          // Guardar snapshot actualizado en caché local de sesión
           try {
-            const vCount = await incrementStudentViews(data.id || slug);
-            if (typeof vCount === 'number' && vCount > 0) {
-              setViewsCount(prev => Math.max(prev, vCount));
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem(CACHE_KEY, JSON.stringify({
+                student: data,
+                knowCount: freshKnow,
+                fanCount: freshFan,
+                viewsCount: freshViews,
+                ratingBreakdown: freshBreakdown,
+                crushCount: freshCrushCount,
+                hasCrushed: freshHasCrushed,
+                timestamp: Date.now()
+              }));
             }
-          } catch (vErr) {
-            console.debug('Error registrando visualización:', vErr);
-          }
+          } catch (cErr) {}
 
-          // Cargar distribución (breakdown) de calificaciones
-          const breakdown = await getStudentRatingBreakdown(data.id || slug);
-          setRatingBreakdown(breakdown);
-
-          // Cargar estado inicial de crushes
-          const crushStatus = await getStudentCrushStatus(data.id || slug, user?.uid || '');
-          setCrushCount(crushStatus.count);
-          setHasCrushed(crushStatus.hasCrushed);
-
-          // Cargar mensajes de amor
-          try {
-            const msgs = await getStudentLoveMessages(data.id || slug, user?.uid);
-            setLoveMessages(msgs);
-          } catch (mErr) {
-            console.warn('Error al cargar mensajes de amor:', mErr);
-          }
-
-          // Cargar interacciones y votos del usuario si está logueado
+          // Cargar interacciones y votos del usuario autenticado en paralelo
           if (user) {
-            try {
-              const details = await getTodayStudentVotesDetails(data.id || slug, user.uid);
-              setTodayVotes(details.votes);
-              setCooldownSeconds(details.cooldownSecondsLeft);
-              setCanVoteCooldown(details.canVote);
-            } catch (err) {
-              const todayV = await getTodayStudentVotes(data.id || slug, user.uid);
-              setTodayVotes(todayV);
+            const userProfilePromise = user.email
+              ? supabase.from('users').select('display_name, username, gender, photo_url').eq('email', user.email).maybeSingle()
+              : supabase.from('users').select('display_name, username, gender, photo_url').eq('id', user.uid).maybeSingle();
+
+            const [detailsRes, notifRes, interRes, userProfileRes] = await Promise.allSettled([
+              getTodayStudentVotesDetails(studentId, user.uid),
+              getStudentNotificationPreferences(studentId, user.uid),
+              getUserStudentInteraction(studentId, user.uid),
+              userProfilePromise
+            ]);
+
+            if (detailsRes.status === 'fulfilled' && detailsRes.value) {
+              setTodayVotes(detailsRes.value.votes || []);
+              setCooldownSeconds(detailsRes.value.cooldownSecondsLeft || 0);
+              setCanVoteCooldown(detailsRes.value.canVote ?? true);
             }
 
-            // Cargar estado de suscripción a notificaciones
-            try {
-              const prefs = await getStudentNotificationPreferences(data.id || slug, user.uid);
-              if (prefs && Object.values(prefs).some(Boolean)) {
-                setIsSubscribedToNotifications(true);
-              } else {
-                setIsSubscribedToNotifications(false);
-              }
-            } catch (pErr) {
-              console.warn('Error loading student notif prefs:', pErr);
+            if (notifRes.status === 'fulfilled' && notifRes.value) {
+              setIsSubscribedToNotifications(Object.values(notifRes.value).some(Boolean));
             }
 
-            const userInteraction = await getUserStudentInteraction(data.id || slug, user.uid);
-            if (userInteraction) {
-              setHasVotedKnow(userInteraction.interaction_type === 'knows');
-              setHasVotedFan(userInteraction.interaction_type === 'fan');
+            if (interRes.status === 'fulfilled' && interRes.value) {
+              setHasVotedKnow(interRes.value.interaction_type === 'knows');
+              setHasVotedFan(interRes.value.interaction_type === 'fan');
             } else {
               setHasVotedKnow(false);
               setHasVotedFan(false);
             }
 
-            // Obtener nombre de usuario real de Supabase o auth y su género
-            try {
-              let query = supabase
-                .from('users')
-                .select('display_name, username, gender, photo_url');
-              if (user.email) {
-                query = query.eq('email', user.email);
-              } else {
-                query = query.eq('id', user.uid);
-              }
-              const { data: dbUser } = await query.maybeSingle();
-
+            if (userProfileRes.status === 'fulfilled' && userProfileRes.value?.data) {
+              const dbUser = userProfileRes.value.data;
               let g = dbUser?.gender || null;
               if (!g && typeof window !== 'undefined') {
                 g = localStorage.getItem(`user_gender_${user.uid}`) || localStorage.getItem('starryz_user_gender');
               }
               setCurrentUserGender(g);
-
               setUserAvatarUrl(dbUser?.photo_url || user.photoURL || null);
 
               const chosen = (dbUser?.username || dbUser?.display_name || user.displayName || '').trim();
@@ -301,19 +345,6 @@ export default function StudentProfile({
                 setCurrentAuthorName(`user_${user.uid.substring(0, 5)}`);
               } else {
                 setCurrentAuthorName('Anónimo');
-              }
-            } catch (uErr) {
-              const chosen = (user.displayName || '').trim();
-              const isGeneric = !chosen || chosen.toLowerCase() === 'anónimo' || chosen.toLowerCase() === 'anonimo';
-              if (!isGeneric) {
-                setCurrentAuthorName(chosen);
-              } else if (user.uid) {
-                setCurrentAuthorName(`user_${user.uid.substring(0, 5)}`);
-              } else {
-                setCurrentAuthorName('Anónimo');
-              }
-              if (typeof window !== 'undefined') {
-                setCurrentUserGender(localStorage.getItem(`user_gender_${user.uid}`) || localStorage.getItem('starryz_user_gender'));
               }
             }
           } else {
@@ -680,11 +711,60 @@ export default function StudentProfile({
     }
   };
 
-  if (loading) {
+  if (loading && !student) {
     return (
-      <div className="max-w-4xl mx-auto px-6 py-24 text-center">
-        <div className="w-10 h-10 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider">Cargando perfil...</p>
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 space-y-6 animate-pulse">
+        {/* Barra superior con volver y acciones */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-2 text-xs font-bold text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            VOLVER AL CENTRO EDUCATIVO
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800" />
+            <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800" />
+          </div>
+        </div>
+
+        {/* Banner del Estudiante Skeleton */}
+        <div className="bg-[#0b0b0e] border border-zinc-800/80 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-6">
+          <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-7 w-full lg:w-auto text-center sm:text-left z-10">
+            {/* Avatar Squircle */}
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl bg-zinc-900 border border-amber-500/20 shrink-0" />
+            
+            <div className="space-y-3 w-full sm:w-auto">
+              <div className="h-8 bg-zinc-800/90 rounded-xl w-60 sm:w-72 mx-auto sm:mx-0" />
+              <div className="flex items-center justify-center sm:justify-start gap-2">
+                <div className="h-5 bg-zinc-800/60 rounded-md w-28" />
+                <div className="h-5 bg-zinc-800/60 rounded-md w-20" />
+              </div>
+              <div className="flex items-center justify-center sm:justify-start gap-4 pt-1">
+                <div className="h-4 bg-zinc-800/50 rounded w-20" />
+                <div className="h-4 bg-zinc-800/50 rounded w-16" />
+                <div className="h-4 bg-zinc-800/50 rounded w-16" />
+              </div>
+            </div>
+          </div>
+
+          {/* Rating Score Box Skeleton */}
+          <div className="w-full lg:w-64 h-28 bg-[#111216] border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-around" />
+        </div>
+
+        {/* Pestañas Skeleton */}
+        <div className="flex border-b border-zinc-800/80 gap-3">
+          <div className="h-10 w-28 bg-zinc-800/80 rounded-t-xl" />
+          <div className="h-10 w-28 bg-zinc-900 rounded-t-xl" />
+          <div className="h-10 w-28 bg-zinc-900 rounded-t-xl" />
+        </div>
+
+        {/* Cards de contenido Skeleton */}
+        <div className="space-y-4 pt-2">
+          <div className="h-36 bg-[#0e0f13] border border-zinc-800/80 rounded-2xl" />
+          <div className="h-28 bg-[#0e0f13] border border-zinc-800/80 rounded-2xl" />
+        </div>
       </div>
     );
   }
@@ -1039,6 +1119,11 @@ export default function StudentProfile({
                     alt={studentFullName}
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
+                    loading="eager"
+                    fetchPriority="high"
+                    decoding="async"
+                    width={112}
+                    height={112}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-white font-black text-3xl sm:text-4xl uppercase">

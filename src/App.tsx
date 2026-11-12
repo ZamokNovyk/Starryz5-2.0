@@ -12,19 +12,21 @@ import SupabaseStatusBadge from '@/components/SupabaseStatusBadge';
 import MyProfile from '@/components/MyProfile';
 import CreateCenterModal from '@/components/Modals/CreateCenterModal';
 import ToolsView from '@/components/ToolsView';
-import PdfOrganizerView from '@/components/PdfOrganizerView';
-import PdfSplitterView from '@/components/PdfSplitterView';
-import PdfCompressorView from '@/components/PdfCompressorView';
-import RuletaView from '@/components/RuletaView';
-import FormadorGruposView from '@/components/FormadorGruposView';
 import ActionNotificationPromptModal from '@/components/Modals/ActionNotificationPromptModal';
 import SearchResultsView from '@/components/SearchResultsView';
 import EducationalCenterProfileView from '@/components/EducationalCenterProfileView';
 import ProfessorProfile from '@/src/pages/ProfessorProfile';
 import StudentProfile from '@/src/pages/StudentProfile';
-import AdminDashboard from '@/src/components/AdminDashboard';
-import TermsOfServicePage from '@/src/pages/TermsOfServicePage';
-import PrivacyPolicyPage from '@/src/pages/PrivacyPolicyPage';
+
+// Lazy loading diferido para reducir el bundle JS inicial y acelerar la carga en móviles
+const AdminDashboard = React.lazy(() => import('@/src/components/AdminDashboard'));
+const TermsOfServicePage = React.lazy(() => import('@/src/pages/TermsOfServicePage'));
+const PrivacyPolicyPage = React.lazy(() => import('@/src/pages/PrivacyPolicyPage'));
+const PdfOrganizerView = React.lazy(() => import('@/components/PdfOrganizerView'));
+const PdfSplitterView = React.lazy(() => import('@/components/PdfSplitterView'));
+const PdfCompressorView = React.lazy(() => import('@/components/PdfCompressorView'));
+const RuletaView = React.lazy(() => import('@/components/RuletaView'));
+const FormadorGruposView = React.lazy(() => import('@/components/FormadorGruposView'));
 import { useAuth } from '@/src/context/AuthContext';
 import { LayoutGrid, User, Bell, X, Wrench } from 'lucide-react';
 import { useFCMNotifications } from '@/hooks/useFCMNotifications';
@@ -410,6 +412,12 @@ export default function App() {
 
       {/* 2. Main Content Area according to Route */}
       <main className="flex-1 pb-28">
+        <React.Suspense fallback={
+          <div className="min-h-[45vh] flex flex-col items-center justify-center space-y-3">
+            <div className="w-8 h-8 border-2 border-[#eab308] border-t-transparent rounded-full animate-spin" />
+            <p className="text-zinc-500 font-mono text-xs">Cargando...</p>
+          </div>
+        }>
         {isAdminRoute ? (
           <AdminDashboard
             onBack={() => {
@@ -550,6 +558,7 @@ export default function App() {
             </div>
           </>
         )}
+        </React.Suspense>
       </main>
 
       {/* Footer */}
