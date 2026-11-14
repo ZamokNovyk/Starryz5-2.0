@@ -1749,7 +1749,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               const userProfileScore = Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0);
               const userProfilePosts = Number((dbUser as any)?.profile_posts) || userProfileScore;
               const userPubScore = Number((dbUser as any)?.pub_score) || 0;
-              const userPubTotalPoints = Number((dbUser as any)?.pub_total_points) || 0;
+              const userPubTotalPoints = Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0);
 
               const avatarDisplayedScore = userScoreDisplayMode === 'combined' && userProfilePosts > 0
                 ? userProfilePosts
@@ -3799,7 +3799,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           profileScore={Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0)}
           profilePostsScore={Number((dbUser as any)?.profile_posts) || Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0)}
           pubScore={Number((dbUser as any)?.pub_score) || 0}
-          pubTotalPoints={Number((dbUser as any)?.pub_total_points) || 0}
+          pubTotalPoints={Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0)}
           onModeSaved={(newMode) => {
             setDbUser((prev: any) => prev ? { ...prev, score_display_mode: newMode } : prev);
             setSuccessMsg('¡Modo de calificación actualizado con éxito!');

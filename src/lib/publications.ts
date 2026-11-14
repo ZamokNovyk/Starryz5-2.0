@@ -274,7 +274,7 @@ export async function updatePublicationVisibility(
 }
 
 /**
- * Elimina una publicación propia
+ * Elimina una publicación propia y limpia sus datos asociados
  */
 export async function deletePublication(
   publicationId: string,
@@ -292,7 +292,17 @@ export async function deletePublication(
       return false;
     }
 
-    // Recalcular la reputación y puntos acumulados del autor (Opción B: descuenta puntos en tiempo real)
+    // Al eliminar la publicación el dueño, se eliminan físicamente todos los comentarios y reseñas de la misma
+    try {
+      await supabase
+        .from(REVIEWS_TABLE)
+        .delete()
+        .eq('publication_id', publicationId);
+    } catch (cleanErr) {
+      console.warn('[Publications] Aviso al limpiar comentarios de publicación eliminada:', cleanErr);
+    }
+
+    // Recalcular métricas de calificación de publicaciones del autor (sus puntos acumulados de XP se conservan)
     try {
       await recalculateAuthorPublicationReputation(userId);
     } catch (rErr) {
@@ -325,6 +335,7 @@ export interface PublicationReviewComment {
   Answers?: number | null;
   answers?: number | null;
   created_at: string;
+  xp_granted?: boolean | null;
 }
 
 const REVIEWS_TABLE = 'user_publicaciones_reseñas+comentarios';
@@ -387,19 +398,21 @@ export async function getPublicationReviews(
       return [];
     }
 
-    const list = (data || []).map((item: any) => {
-      const parsed = parseCommentText(item.comment);
-      return {
-        ...item,
-        id: item.id || item.uuid,
-        comment: parsed.text,
-        raw_comment: item.comment,
-        parent_id: parsed.parentId,
-        reply_to_user_name: parsed.replyToUserName,
-        Answers: typeof item.Answers === 'number' ? item.Answers : (typeof item.answers === 'number' ? item.answers : 0),
-        answers: typeof item.Answers === 'number' ? item.Answers : (typeof item.answers === 'number' ? item.answers : 0),
-      };
-    });
+    const list = (data || [])
+      .filter((item: any) => Boolean(item.comment && item.comment.trim()))
+      .map((item: any) => {
+        const parsed = parseCommentText(item.comment);
+        return {
+          ...item,
+          id: item.id || item.uuid,
+          comment: parsed.text,
+          raw_comment: item.comment,
+          parent_id: parsed.parentId,
+          reply_to_user_name: parsed.replyToUserName,
+          Answers: typeof item.Answers === 'number' ? item.Answers : (typeof item.answers === 'number' ? item.answers : 0),
+          answers: typeof item.Answers === 'number' ? item.Answers : (typeof item.answers === 'number' ? item.answers : 0),
+        };
+      });
 
     return list as PublicationReviewComment[];
   } catch (err) {
@@ -430,6 +443,10 @@ export async function getUserPublicationRating(
 
     if (error || !data) return null;
     const row = data as any;
+    // Si la fila fue borrada (stars = null y comment = null), retornar null para que la UI sepa que no hay review activa
+    if (row.stars === null && (!row.comment || !row.comment.trim())) {
+      return null;
+    }
     return {
       ...row,
       id: row.id || row.uuid,
@@ -541,6 +558,10 @@ export async function getUserPublicationReview(
 
     if (error || !data) return null;
     const row = data as any;
+    // Si la fila fue borrada (stars = null y comment = null), retornar null para que la UI sepa que no hay review activa
+    if (row.stars === null && (!row.comment || !row.comment.trim())) {
+      return null;
+    }
     return {
       ...row,
       id: row.id || row.uuid,
@@ -636,11 +657,10 @@ export async function recalculatePublicationMetrics(publicationId: string): Prom
 
 /**
  * Recalcula y actualiza en 'users' las columnas acumuladas de publicaciones:
- * pub_stars_1..5, pub_total_ratings, pub_score, pub_total_points y profile_posts.
+ * pub_stars_1..5, pub_total_ratings, pub_score y profile_posts.
  * 
- * pub_total_points = Suma bruta de todas las estrellas recibidas en publicaciones activas.
- * Es un contador acumulativo que sube y baja dinámicamente (Opción B - Trigger style).
- * Ejemplo: Si un usuario recibió votos de 4★, 5★, 2★, 3★, 1★ → pub_total_points = 15
+ * Nota: Los puntos acumulados de XP ('pub_points' y 'total_points') NO se sobrescriben aquí,
+ * ya que son inmutables y solo se otorgan una vez por usuario en el primer voto.
  */
 export async function recalculateAuthorPublicationReputation(authorUserId: string): Promise<void> {
   if (!authorUserId) return;
@@ -668,9 +688,6 @@ export async function recalculateAuthorPublicationReputation(authorUserId: strin
     const pubTotal = pubS1 + pubS2 + pubS3 + pubS4 + pubS5;
     const pubWeighted = (1 * pubS1) + (2 * pubS2) + (3 * pubS3) + (4 * pubS4) + (5 * pubS5);
     const pubScore = pubTotal > 0 ? parseFloat((pubWeighted / pubTotal).toFixed(4)) : 0;
-
-    // pub_total_points: suma bruta de todos los puntos de estrellas (sube y baja dinámicamente)
-    const pubTotalPoints = pubWeighted;
 
     // Obtener el score de perfil actual de 'users'
     const { data: userData } = await supabase
@@ -700,12 +717,63 @@ export async function recalculateAuthorPublicationReputation(authorUserId: strin
         pub_stars_5: pubS5,
         pub_total_ratings: pubTotal,
         pub_score: pubScore,
-        pub_total_points: pubTotalPoints,
         profile_posts: profilePosts,
       })
       .eq('id', authorUserId);
   } catch (err) {
     console.warn('[Publications] Error al recalcular reputación acumulada de publicaciones:', err);
+  }
+}
+
+/**
+ * Otorga XP acumulativo al autor de una publicación por el primer voto recibido de un usuario.
+ * - Protege contra spam y auto-votos (el autor no puede votarse a sí mismo para farmear puntos).
+ * - Sincroniza las 3 columnas en 'users': 'pub_points' (y 'pub_total_points'), 'profile_points' y 'total_points'.
+ */
+export async function grantPublicationXpToAuthor(
+  publicationId: string,
+  voterUid: string,
+  starsAwarded: number
+): Promise<void> {
+  if (!publicationId || !starsAwarded || starsAwarded <= 0) return;
+  try {
+    // 1. Obtener el autor de la publicación
+    const { data: pubData } = await supabase
+      .from('user-publications')
+      .select('user_id')
+      .eq('id', publicationId)
+      .maybeSingle();
+
+    const authorUserId = pubData?.user_id;
+    if (!authorUserId) return;
+
+    // 2. Prohibir auto-votos para ganar XP
+    if (authorUserId === voterUid) return;
+
+    // 3. Consultar las 3 columnas de puntos en 'users'
+    const { data: userData } = await supabase
+      .from('users')
+      .select('pub_points, pub_total_points, profile_points, total_points')
+      .eq('id', authorUserId)
+      .maybeSingle();
+
+    const currentPubPoints = Number(userData?.pub_points ?? userData?.pub_total_points ?? 0);
+    const currentProfilePoints = Number(userData?.profile_points ?? 0);
+
+    const newPubPoints = currentPubPoints + starsAwarded;
+    const newTotalPoints = currentProfilePoints + newPubPoints;
+
+    // 4. Actualizar las 3 columnas en 'users'
+    await supabase
+      .from('users')
+      .update({
+        pub_points: newPubPoints,
+        pub_total_points: newPubPoints,
+        total_points: newTotalPoints,
+      })
+      .eq('id', authorUserId);
+  } catch (err) {
+    console.warn('[Publications] Error al otorgar XP de publicación al autor:', err);
   }
 }
 
@@ -739,27 +807,48 @@ export async function submitPublicationPureRating(params: {
   const cleanStars = Math.min(5, Math.max(1, Math.round(stars)));
 
   try {
-    // 1. Buscar todas las calificaciones existentes de este usuario en esta publicación
+    // 1. Buscar si ya existe una calificación o comentario principal previo de este usuario en esta publicación
     const { data: existingRows } = await supabase
       .from(REVIEWS_TABLE)
       .select('*')
       .eq('publication_id', publicationId)
       .eq('user_uid', userUid)
-      .not('stars', 'is', null)
       .order('created_at', { ascending: false });
 
-    if (existingRows && existingRows.length > 0) {
-      // Tomar la primera fila y actualizar sus estrellas
-      const primaryRow = existingRows[0];
+    // Filtrar para tomar la fila principal (que no sea respuesta secundaria [[reply:)
+    const primaryRow = existingRows?.find((r: any) => !r.comment?.startsWith('[[reply:')) || (existingRows && existingRows[0] ? existingRows[0] : null);
+
+    let needsGrantXp = false;
+
+    if (primaryRow && primaryRow.id) {
+      // Si la fila ya existe, verificar si ya se le otorgó XP previamente
+      const alreadyGrantedXp = Boolean(primaryRow.xp_granted);
+
+      // Si nunca se le otorgó XP (primera vez que da estrellas), lo marcamos para otorgar XP
+      if (!alreadyGrantedXp) {
+        needsGrantXp = true;
+      }
+
+      const updateData: any = {
+        stars: cleanStars,
+        user_display_name: authorInfo?.displayName || primaryRow.user_display_name || 'Usuario',
+        user_username: authorInfo?.username || primaryRow.user_username || null,
+        user_avatar_url: authorInfo?.avatarUrl || primaryRow.user_avatar_url || null,
+      };
+
+      if (!alreadyGrantedXp) {
+        updateData.xp_granted = true;
+      }
+
       const { data, error } = await supabase
         .from(REVIEWS_TABLE)
-        .update({ stars: cleanStars })
+        .update(updateData)
         .eq('id', primaryRow.id)
         .select();
 
       // Si por doble clic previo del mouse se crearon filas duplicadas, eliminar las sobrantes
-      if (existingRows.length > 1) {
-        const extraIds = existingRows.slice(1).map((r: any) => r.id).filter(Boolean);
+      if (existingRows && existingRows.length > 1) {
+        const extraIds = existingRows.filter((r: any) => r.id !== primaryRow.id && !r.comment?.startsWith('[[reply:')).map((r: any) => r.id);
         if (extraIds.length > 0) {
           try {
             await supabase.from(REVIEWS_TABLE).delete().in('id', extraIds);
@@ -768,6 +857,11 @@ export async function submitPublicationPureRating(params: {
       }
 
       if (error) return { success: false, error: error.message };
+
+      // Solo si es su primera vez dando estrellas en esta publicación se entrega XP al autor
+      if (needsGrantXp) {
+        await grantPublicationXpToAuthor(publicationId, userUid, cleanStars);
+      }
 
       const updatedRow = (data && data[0]) ? (data[0] as PublicationReviewComment) : primaryRow;
       const metrics = await recalculatePublicationMetrics(publicationId);
@@ -780,7 +874,7 @@ export async function submitPublicationPureRating(params: {
       };
     }
 
-    // Primera vez que califica: insertar nuevo registro con estrellas
+    // Primera vez absoluta que interactúa: insertar nuevo registro con estrellas y xp_granted = true
     const { data: insertedList, error: insertErr } = await supabase
       .from(REVIEWS_TABLE)
       .insert([{
@@ -788,6 +882,7 @@ export async function submitPublicationPureRating(params: {
         user_uid: userUid,
         stars: cleanStars,
         comment: null,
+        xp_granted: true,
         user_display_name: authorInfo?.displayName || 'Usuario',
         user_username: authorInfo?.username || null,
         user_avatar_url: authorInfo?.avatarUrl || null,
@@ -795,6 +890,9 @@ export async function submitPublicationPureRating(params: {
       .select();
 
     if (insertErr) return { success: false, error: insertErr.message };
+
+    // Otorgar XP al autor por el primer voto recibido
+    await grantPublicationXpToAuthor(publicationId, userUid, cleanStars);
 
     const insertedRow = (insertedList && insertedList[0]) ? (insertedList[0] as PublicationReviewComment) : undefined;
     const metrics = await recalculatePublicationMetrics(publicationId);
@@ -867,24 +965,34 @@ export async function submitPublicationReview(params: {
     let insertedOrUpdated: any = null;
 
     if (cleanStars !== null) {
-      // El usuario está enviando una reseña (estrellas + comentario). Buscar si ya tiene calificación previa:
+      // El usuario está enviando una reseña (estrellas + comentario). Buscar si ya tiene fila previa:
       const { data: existingRows } = await supabase
         .from(REVIEWS_TABLE)
         .select('*')
         .eq('publication_id', publicationId)
         .eq('user_uid', userUid)
-        .not('stars', 'is', null)
         .order('created_at', { ascending: false });
 
-      const existingRating = existingRows && existingRows[0] ? existingRows[0] : null;
+      // Filtrar para tomar la fila principal (que no sea respuesta secundaria [[reply:)
+      const existingRating = existingRows?.find((r: any) => !r.comment?.startsWith('[[reply:')) || (existingRows && existingRows[0] ? existingRows[0] : null);
 
-      const updatePayload = {
+      let needsGrantXp = false;
+      const alreadyGrantedXp = Boolean(existingRating?.xp_granted);
+      if (!alreadyGrantedXp) {
+        needsGrantXp = true;
+      }
+
+      const updatePayload: any = {
         stars: cleanStars,
         comment: serializedComment,
         user_display_name: authorInfo?.displayName || existingRating?.user_display_name || 'Usuario',
         user_username: authorInfo?.username || existingRating?.user_username || null,
         user_avatar_url: authorInfo?.avatarUrl || existingRating?.user_avatar_url || null,
       };
+
+      if (!alreadyGrantedXp) {
+        updatePayload.xp_granted = true;
+      }
 
       if (existingRating && existingRating.id) {
         // Actualizar su registro de calificación existente por id
@@ -896,7 +1004,7 @@ export async function submitPublicationReview(params: {
 
         // Limpiar cualquier duplicado adicional que haya podido generarse previamente
         if (existingRows && existingRows.length > 1) {
-          const extraIds = existingRows.slice(1).map((r: any) => r.id).filter(Boolean);
+          const extraIds = existingRows.filter((r: any) => r.id !== existingRating.id && !r.comment?.startsWith('[[reply:')).map((r: any) => r.id);
           if (extraIds.length > 0) {
             try {
               await supabase.from(REVIEWS_TABLE).delete().in('id', extraIds);
@@ -912,27 +1020,13 @@ export async function submitPublicationReview(params: {
       }
 
       if (!insertedOrUpdated) {
-        // Intentar actualizar buscando por publication_id y user_uid donde stars no sea null
-        const { data: retryList } = await supabase
-          .from(REVIEWS_TABLE)
-          .update(updatePayload)
-          .eq('publication_id', publicationId)
-          .eq('user_uid', userUid)
-          .not('stars', 'is', null)
-          .select();
-
-        if (retryList && retryList[0]) {
-          insertedOrUpdated = retryList[0];
-        }
-      }
-
-      if (!insertedOrUpdated) {
-        // Si no existía registro previo, insertar nuevo
+        // Si no existía registro previo, insertar nuevo con xp_granted = true
         const { data: insertedList, error: insertErr } = await supabase
           .from(REVIEWS_TABLE)
           .insert([{
             publication_id: publicationId,
             user_uid: userUid,
+            xp_granted: true,
             ...updatePayload,
           }])
           .select();
@@ -941,6 +1035,11 @@ export async function submitPublicationReview(params: {
         if (insertedList && insertedList[0]) {
           insertedOrUpdated = insertedList[0];
         }
+      }
+
+      // Otorgar XP al autor solo si es su primera vez dando estrellas
+      if (needsGrantXp) {
+        await grantPublicationXpToAuthor(publicationId, userUid, cleanStars);
       }
     } else {
       // Puro comentario sin estrellas: se crea un nuevo comentario independiente
@@ -1177,26 +1276,41 @@ export async function deletePublicationReviewComment(
     const parsedTarget = parseCommentText(existing.comment || null);
     const targetParentId = parsedTarget.parentId;
 
-    // 1. Eliminar el comentario solicitado
-    const { error } = await supabase
-      .from(REVIEWS_TABLE)
-      .delete()
-      .eq('id', reviewId)
-      .eq('user_uid', userUid);
-
-    if (error) return { success: false, error: error.message };
-
-    // 2. Si es una respuesta a un comentario padre, decrementar Answers (-1) del padre de forma atómica
     if (targetParentId) {
+      // ── CASO 1: ES UNA RESPUESTA A UN COMENTARIO ────────────────────────────
+      // Se elimina físicamente de la base de datos de manera normal
+      const { error } = await supabase
+        .from(REVIEWS_TABLE)
+        .delete()
+        .eq('id', reviewId)
+        .eq('user_uid', userUid);
+
+      if (error) return { success: false, error: error.message };
+
+      // Decrementar Answers (-1) del comentario padre de forma atómica
       try {
         await supabase.rpc('decrement_answers', { comment_id: targetParentId });
       } catch (eAnsDec) {
         console.warn('[Publications] Aviso al decrementar Answers:', eAnsDec);
       }
     } else {
-      // 3. Si es un COMENTARIO PRINCIPAL: Eliminar en cascada todas sus respuestas en la BD
+      // ── CASO 2: ES EL COMENTARIO O CALIFICACIÓN PRINCIPAL ────────────────────
+      // NO se elimina el documento. Se limpian las columnas a NULL para conservar el registro de xp_granted
+      const { error } = await supabase
+        .from(REVIEWS_TABLE)
+        .update({
+          stars: null,
+          comment: null,
+          answers: 0,
+          Answers: 0,
+        })
+        .eq('id', reviewId)
+        .eq('user_uid', userUid);
+
+      if (error) return { success: false, error: error.message };
+
+      // Y se eliminan físicamente en cascada todas las respuestas asociadas a este comentario
       try {
-        // En nuestra serialización, las respuestas tienen comment con [[reply:reviewId:...]]
         await supabase
           .from(REVIEWS_TABLE)
           .delete()

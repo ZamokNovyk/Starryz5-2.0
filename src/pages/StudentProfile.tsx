@@ -1148,7 +1148,7 @@ export default function StudentProfile({
                 ? student.profile_posts 
                 : profileScoreVal;
               const pubScoreVal = typeof student?.pub_score === 'number' ? student.pub_score : 0;
-              const pubTotalPoints = typeof student?.pub_total_points === 'number' ? student.pub_total_points : 0;
+              const pubTotalPoints = typeof student?.pub_points === 'number' ? student.pub_points : (typeof student?.pub_total_points === 'number' ? student.pub_total_points : 0);
 
               const displayedScore = studentScoreMode === 'combined' && profilePostsVal > 0 
                 ? profilePostsVal 
@@ -2386,7 +2386,7 @@ export default function StudentProfile({
           profileScore={studentScore || 0}
           profilePostsScore={typeof student.profile_posts === 'number' && student.profile_posts > 0 ? student.profile_posts : (studentScore || 0)}
           pubScore={typeof student.pub_score === 'number' ? student.pub_score : 0}
-          pubTotalPoints={typeof student.pub_total_points === 'number' ? student.pub_total_points : 0}
+          pubTotalPoints={typeof student.pub_points === 'number' ? student.pub_points : (typeof student.pub_total_points === 'number' ? student.pub_total_points : 0)}
           onModeSaved={(newMode) => {
             setStudent((prev) => prev ? { ...prev, score_display_mode: newMode } : prev);
           }}

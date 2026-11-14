@@ -42,6 +42,9 @@ export interface Student {
   pub_score?: number;
   pub_total_ratings?: number;
   pub_total_points?: number;
+  pub_points?: number;
+  profile_points?: number;
+  total_points?: number;
   profile_posts?: number;
   score_display_mode?: 'profile' | 'combined' | 'publications';
 }
@@ -1798,14 +1801,21 @@ export async function submitStudentVote(
       5: stars5,
     };
 
+    // Calcular puntos de perfil (suma bruta de estrellas de votos en perfil)
+    const profilePoints = (1 * stars1) + (2 * stars2) + (3 * stars3) + (4 * stars4) + (5 * stars5);
+
     let userPubScore = 0;
+    let userPubPoints = 0;
     try {
       const targetUid = uuids[0];
       if (targetUid) {
-        const { data: uInfo } = await supabase.from('users').select('pub_score').eq('id', targetUid).maybeSingle();
+        const { data: uInfo } = await supabase.from('users').select('pub_score, pub_points, pub_total_points').eq('id', targetUid).maybeSingle();
         userPubScore = Number(uInfo?.pub_score) || 0;
+        userPubPoints = Number(uInfo?.pub_points ?? uInfo?.pub_total_points ?? 0);
       }
     } catch (e) {}
+
+    const totalPoints = profilePoints + userPubPoints;
 
     let profilePosts = newScore;
     if (newScore > 0 && userPubScore > 0) {
@@ -1823,6 +1833,8 @@ export async function submitStudentVote(
       stars_4: stars4,
       stars_5: stars5,
       profile_posts: profilePosts,
+      profile_points: profilePoints,
+      total_points: totalPoints,
     };
 
     // Actualizar tabla 'users'
