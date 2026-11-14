@@ -2088,8 +2088,9 @@ export async function getStudentLoveMessages(
     }
 
     let allData: any[] = [];
+    let queriedSuccessfully = false;
     
-    // 1. Intentar consultar desde user_love_messages (tabla singular)
+    // 1. Consultar desde user_love_messages (tabla estándar en Supabase)
     try {
       const res = await supabase
         .from('user_love_messages')
@@ -2097,22 +2098,27 @@ export async function getStudentLoveMessages(
         .in('target_user_id', idsToQuery)
         .order('created_at', { ascending: false });
 
-      if (!res.error && res.data && res.data.length > 0) {
-        allData.push(...res.data);
+      if (!res.error) {
+        queriedSuccessfully = true;
+        if (res.data && res.data.length > 0) {
+          allData.push(...res.data);
+        }
       }
     } catch (e) {}
 
-    // 2. Consultar users_love_messages (plural)
-    try {
-      const resPlural = await supabase
-        .from('users_love_messages')
-        .select('*')
-        .in('target_user_id', idsToQuery)
-        .order('created_at', { ascending: false });
-      if (!resPlural.error && resPlural.data && resPlural.data.length > 0) {
-        allData.push(...resPlural.data);
-      }
-    } catch (e) {}
+    // 2. Solo intentar en users_love_messages si la tabla estándar falló
+    if (!queriedSuccessfully) {
+      try {
+        const resPlural = await supabase
+          .from('users_love_messages')
+          .select('*')
+          .in('target_user_id', idsToQuery)
+          .order('created_at', { ascending: false });
+        if (!resPlural.error && resPlural.data && resPlural.data.length > 0) {
+          allData.push(...resPlural.data);
+        }
+      } catch (e) {}
+    }
 
     // Deduplicar mensajes
     const seen = new Set<string>();
@@ -2131,28 +2137,34 @@ export async function getStudentLoveMessages(
     // Cargar reacciones/corazones que ha dado el usuario actual desde user_love_reactions
     const userHeartedMessageIds = new Set<string>();
     if (currentUserUid) {
+      let reactionsQueried = false;
       try {
-        // Consultar de user_love_reactions
-        const { data: userReactions } = await supabase
+        // Consultar de user_love_reactions (tabla estándar)
+        const { data: userReactions, error: reacError } = await supabase
           .from('user_love_reactions')
           .select('message_id')
           .eq('user_uid', currentUserUid);
 
-        if (userReactions && Array.isArray(userReactions)) {
-          userReactions.forEach(h => userHeartedMessageIds.add(String(h.message_id)));
+        if (!reacError) {
+          reactionsQueried = true;
+          if (userReactions && Array.isArray(userReactions)) {
+            userReactions.forEach(h => userHeartedMessageIds.add(String(h.message_id)));
+          }
         }
+      } catch (hErr) {}
 
-        // Consultar de users_love_message_hearts
-        const { data: userHearts } = await supabase
-          .from('users_love_message_hearts')
-          .select('message_id')
-          .eq('user_uid', currentUserUid);
+      // Solo si falló user_love_reactions intentamos users_love_message_hearts como fallback
+      if (!reactionsQueried) {
+        try {
+          const { data: userHearts } = await supabase
+            .from('users_love_message_hearts')
+            .select('message_id')
+            .eq('user_uid', currentUserUid);
 
-        if (userHearts && Array.isArray(userHearts)) {
-          userHearts.forEach(h => userHeartedMessageIds.add(String(h.message_id)));
-        }
-      } catch (hErr) {
-        console.warn('Aviso cargando reacciones:', hErr);
+          if (userHearts && Array.isArray(userHearts)) {
+            userHearts.forEach(h => userHeartedMessageIds.add(String(h.message_id)));
+          }
+        } catch (_) {}
       }
     }
 
@@ -2296,10 +2308,10 @@ export async function toggleStudentLoveMessageHeart(
 
     if (alreadyHearted) {
       newHeartsCount = Math.max(0, currentCount - 1);
-      await Promise.allSettled([
-        supabase.from('user_love_reactions').delete().eq('message_id', String(messageId)).eq('user_uid', userUid),
-        supabase.from('users_love_message_hearts').delete().eq('message_id', messageId).eq('user_uid', userUid),
-      ]);
+      const delRes = await supabase.from('user_love_reactions').delete().eq('message_id', String(messageId)).eq('user_uid', userUid);
+      if (delRes.error) {
+        await supabase.from('users_love_message_hearts').delete().eq('message_id', messageId).eq('user_uid', userUid);
+      }
     } else {
       newHeartsCount = currentCount + 1;
       const reactionPayload = {
@@ -2307,21 +2319,21 @@ export async function toggleStudentLoveMessageHeart(
         user_uid: userUid,
         created_at: new Date().toISOString()
       };
-      await Promise.allSettled([
-        supabase.from('user_love_reactions').insert([reactionPayload]),
-        supabase.from('users_love_message_hearts').insert([{
+      const insRes = await supabase.from('user_love_reactions').insert([reactionPayload]);
+      if (insRes.error) {
+        await supabase.from('users_love_message_hearts').insert([{
           message_id: messageId,
           user_uid: userUid,
           created_at: reactionPayload.created_at
-        }]),
-      ]);
+        }]);
+      }
     }
 
-    // Actualizar columna general hearts_count en las tablas de mensajes
-    await Promise.allSettled([
-      supabase.from('user_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId),
-      supabase.from('users_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId),
-    ]);
+    // Actualizar columna general hearts_count en la tabla de mensajes
+    const updateRes = await supabase.from('user_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId);
+    if (updateRes.error) {
+      await supabase.from('users_love_messages').update({ hearts_count: newHeartsCount }).eq('id', messageId);
+    }
 
     // Actualizar espejo en localStorage
     if (typeof window !== 'undefined') {

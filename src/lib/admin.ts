@@ -101,7 +101,7 @@ export async function getAdminDashboardMetrics(): Promise<AdminDashboardData> {
       // Traer una muestra ligera de usuarios recientes (solo 10 para vista previa)
       const { data: recent } = await supabase
         .from('users')
-        .select('id, firebase_uid, email, display_name, username, role, is_anonymous, linked_google_at, created_at')
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(10);
 
