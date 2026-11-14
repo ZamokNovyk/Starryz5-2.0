@@ -1147,8 +1147,13 @@ export default function StudentProfile({
               const profilePostsVal = typeof student?.profile_posts === 'number' && student.profile_posts > 0 
                 ? student.profile_posts 
                 : profileScoreVal;
+              const pubScoreVal = typeof student?.pub_score === 'number' ? student.pub_score : 0;
+              const pubTotalPoints = typeof student?.pub_total_points === 'number' ? student.pub_total_points : 0;
+
               const displayedScore = studentScoreMode === 'combined' && profilePostsVal > 0 
                 ? profilePostsVal 
+                : studentScoreMode === 'publications' && pubScoreVal > 0
+                ? pubScoreVal
                 : profileScoreVal;
 
               return (
@@ -1161,8 +1166,8 @@ export default function StudentProfile({
                   onClick={isOwnStudentProfile ? () => setIsScoreModeModalOpen(true) : undefined}
                   title={
                     isOwnStudentProfile 
-                      ? "Toca para configurar si muestras la calificación de tu perfil o perfil + publicaciones" 
-                      : `Calificación general: ${displayedScore.toFixed(4)}`
+                      ? "Toca para configurar la calificación visible (Perfil, Solo Publicaciones o Perfil + Publicaciones)" 
+                      : `Calificación visible: ${displayedScore.toFixed(4)}${pubTotalPoints > 0 ? ` (${pubTotalPoints.toLocaleString()} pts de estrellas acumuladas)` : ''}`
                   }
                 >
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
@@ -1171,6 +1176,11 @@ export default function StudentProfile({
                     className="text-xs sm:text-sm font-mono font-black tracking-tight"
                     subClassName="text-[0.82em] font-bold opacity-85 ml-0.5 tracking-normal text-amber-300"
                   />
+                  {studentScoreMode === 'publications' && (
+                    <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30 ml-0.5">
+                      PUB
+                    </span>
+                  )}
                 </div>
               );
             })()}
@@ -2366,7 +2376,7 @@ export default function StudentProfile({
         />
       )}
 
-      {/* Modal para configurar el modo de calificación visible (Perfil vs Perfil + Publicaciones) */}
+      {/* Modal para configurar el modo de calificación visible (Perfil vs Perfil + Publicaciones vs Solo Publicaciones) */}
       {student && user && isScoreModeModalOpen && (
         <ScoreDisplayModeModal
           isOpen={isScoreModeModalOpen}
@@ -2376,6 +2386,7 @@ export default function StudentProfile({
           profileScore={studentScore || 0}
           profilePostsScore={typeof student.profile_posts === 'number' && student.profile_posts > 0 ? student.profile_posts : (studentScore || 0)}
           pubScore={typeof student.pub_score === 'number' ? student.pub_score : 0}
+          pubTotalPoints={typeof student.pub_total_points === 'number' ? student.pub_total_points : 0}
           onModeSaved={(newMode) => {
             setStudent((prev) => prev ? { ...prev, score_display_mode: newMode } : prev);
           }}

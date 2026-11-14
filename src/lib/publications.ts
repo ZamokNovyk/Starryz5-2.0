@@ -291,6 +291,14 @@ export async function deletePublication(
       console.error('[Publications] Error al eliminar publicación:', error);
       return false;
     }
+
+    // Recalcular la reputación y puntos acumulados del autor (Opción B: descuenta puntos en tiempo real)
+    try {
+      await recalculateAuthorPublicationReputation(userId);
+    } catch (rErr) {
+      console.warn('[Publications] Aviso al recalcular reputación tras eliminar publicación:', rErr);
+    }
+
     return true;
   } catch (err) {
     console.error('[Publications] Excepción al eliminar publicación:', err);
@@ -628,7 +636,11 @@ export async function recalculatePublicationMetrics(publicationId: string): Prom
 
 /**
  * Recalcula y actualiza en 'users' las columnas acumuladas de publicaciones:
- * pub_stars_1..5, pub_total_ratings, pub_score y profile_posts.
+ * pub_stars_1..5, pub_total_ratings, pub_score, pub_total_points y profile_posts.
+ * 
+ * pub_total_points = Suma bruta de todas las estrellas recibidas en publicaciones activas.
+ * Es un contador acumulativo que sube y baja dinámicamente (Opción B - Trigger style).
+ * Ejemplo: Si un usuario recibió votos de 4★, 5★, 2★, 3★, 1★ → pub_total_points = 15
  */
 export async function recalculateAuthorPublicationReputation(authorUserId: string): Promise<void> {
   if (!authorUserId) return;
@@ -656,6 +668,9 @@ export async function recalculateAuthorPublicationReputation(authorUserId: strin
     const pubTotal = pubS1 + pubS2 + pubS3 + pubS4 + pubS5;
     const pubWeighted = (1 * pubS1) + (2 * pubS2) + (3 * pubS3) + (4 * pubS4) + (5 * pubS5);
     const pubScore = pubTotal > 0 ? parseFloat((pubWeighted / pubTotal).toFixed(4)) : 0;
+
+    // pub_total_points: suma bruta de todos los puntos de estrellas (sube y baja dinámicamente)
+    const pubTotalPoints = pubWeighted;
 
     // Obtener el score de perfil actual de 'users'
     const { data: userData } = await supabase
@@ -685,6 +700,7 @@ export async function recalculateAuthorPublicationReputation(authorUserId: strin
         pub_stars_5: pubS5,
         pub_total_ratings: pubTotal,
         pub_score: pubScore,
+        pub_total_points: pubTotalPoints,
         profile_posts: profilePosts,
       })
       .eq('id', authorUserId);

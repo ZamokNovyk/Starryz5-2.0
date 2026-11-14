@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
-import { X, Star, Check, Sparkles, Layers, UserCheck, Loader2 } from 'lucide-react';
+import { X, Star, Check, Sparkles, Layers, UserCheck, Loader2, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/src/lib/supabase';
 import { NosediveScore } from '@/components/NosediveScore';
+
+type ScoreDisplayModeType = 'profile' | 'combined' | 'publications';
 
 interface ScoreDisplayModeModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
-  currentMode: 'profile' | 'combined';
+  currentMode: ScoreDisplayModeType;
   profileScore: number;
   profilePostsScore: number;
   pubScore: number;
-  onModeSaved: (newMode: 'profile' | 'combined') => void;
+  pubTotalPoints?: number;
+  onModeSaved: (newMode: ScoreDisplayModeType) => void;
 }
 
 export default function ScoreDisplayModeModal({
@@ -22,9 +25,10 @@ export default function ScoreDisplayModeModal({
   profileScore,
   profilePostsScore,
   pubScore,
+  pubTotalPoints = 0,
   onModeSaved,
 }: ScoreDisplayModeModalProps) {
-  const [selectedMode, setSelectedMode] = useState<'profile' | 'combined'>(currentMode || 'profile');
+  const [selectedMode, setSelectedMode] = useState<ScoreDisplayModeType>(currentMode || 'profile');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +58,37 @@ export default function ScoreDisplayModeModal({
       setSaving(false);
     }
   };
+
+  const options: {
+    mode: ScoreDisplayModeType;
+    icon: React.ReactNode;
+    label: string;
+    description: string;
+    scoreValue: number;
+    extraInfo?: string;
+  }[] = [
+    {
+      mode: 'profile',
+      icon: <UserCheck className="w-4 h-4 text-amber-400" />,
+      label: 'Solo mi Perfil',
+      description: 'Muestra exclusivamente los votos y estrellas que te han dejado otros usuarios en tu perfil.',
+      scoreValue: profileScore,
+    },
+    {
+      mode: 'publications',
+      icon: <ImageIcon className="w-4 h-4 text-amber-400" />,
+      label: 'Solo Publicaciones',
+      description: `Muestra la calificación promedio obtenida exclusivamente de tus publicaciones.${pubTotalPoints > 0 ? ` Puntos acumulados: ${pubTotalPoints.toLocaleString()} pts.` : ''}`,
+      scoreValue: pubScore,
+    },
+    {
+      mode: 'combined',
+      icon: <Layers className="w-4 h-4 text-amber-400" />,
+      label: 'Perfil + Publicaciones',
+      description: `Promedia en partes iguales tu perfil (${profileScore > 0 ? profileScore.toFixed(1) : '5.0'}) y todas tus publicaciones (${pubScore > 0 ? pubScore.toFixed(1) : '5.0'}) para una reputación global estilo Nosedive.`,
+      scoreValue: profilePostsScore || profileScore,
+    },
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -86,71 +121,40 @@ export default function ScoreDisplayModeModal({
 
         {/* Opciones */}
         <div className="space-y-3">
-          {/* Opción 1: Solo Perfil */}
-          <div
-            onClick={() => setSelectedMode('profile')}
-            className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 select-none ${
-              selectedMode === 'profile'
-                ? 'bg-amber-500/10 border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.1)]'
-                : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
-            }`}
-          >
-            <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-              selectedMode === 'profile'
-                ? 'border-amber-400 bg-amber-400 text-black'
-                : 'border-zinc-600 bg-transparent'
-            }`}>
-              {selectedMode === 'profile' && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-            </div>
-
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-black text-white flex items-center gap-1.5">
-                  <UserCheck className="w-4 h-4 text-amber-400" />
-                  Solo mi Perfil
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-black/70 border border-amber-400/50 text-amber-400 text-xs font-bold">
-                  ★ <NosediveScore score={profileScore} subClassName="text-[0.72em] font-semibold opacity-80 ml-0.5 text-amber-300" />
-                </span>
+          {options.map((opt) => (
+            <div
+              key={opt.mode}
+              onClick={() => setSelectedMode(opt.mode)}
+              className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 select-none ${
+                selectedMode === opt.mode
+                  ? 'bg-amber-500/10 border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.1)]'
+                  : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
+              }`}
+            >
+              <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                selectedMode === opt.mode
+                  ? 'border-amber-400 bg-amber-400 text-black'
+                  : 'border-zinc-600 bg-transparent'
+              }`}>
+                {selectedMode === opt.mode && <Check className="w-3.5 h-3.5 stroke-[3]" />}
               </div>
-              <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Muestra exclusivamente los votos y estrellas que te han dejado otros usuarios en tu perfil.
-              </p>
-            </div>
-          </div>
 
-          {/* Opción 2: Perfil + Publicaciones */}
-          <div
-            onClick={() => setSelectedMode('combined')}
-            className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 select-none ${
-              selectedMode === 'combined'
-                ? 'bg-amber-500/10 border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.1)]'
-                : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
-            }`}
-          >
-            <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-              selectedMode === 'combined'
-                ? 'border-amber-400 bg-amber-400 text-black'
-                : 'border-zinc-600 bg-transparent'
-            }`}>
-              {selectedMode === 'combined' && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-            </div>
-
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-black text-white flex items-center gap-1.5">
-                  <Layers className="w-4 h-4 text-amber-400" />
-                  Perfil + Publicaciones
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-black/70 border border-amber-400/50 text-amber-400 text-xs font-bold">
-                  ★ <NosediveScore score={profilePostsScore || profileScore} subClassName="text-[0.72em] font-semibold opacity-80 ml-0.5 text-amber-300" />
-                </span>
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-black text-white flex items-center gap-1.5">
+                    {opt.icon}
+                    {opt.label}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-black/70 border border-amber-400/50 text-amber-400 text-xs font-bold">
+                    ★ <NosediveScore score={opt.scoreValue} subClassName="text-[0.72em] font-semibold opacity-80 ml-0.5 text-amber-300" />
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  {opt.description}
+                </p>
               </div>
-              <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Promedia en partes iguales tu perfil ({profileScore > 0 ? profileScore.toFixed(1) : '5.0'}) y todas tus publicaciones ({pubScore > 0 ? pubScore.toFixed(1) : '5.0'}) para una reputación global estilo Nosedive.
-              </p>
             </div>
-          </div>
+          ))}
         </div>
 
         {error && (

@@ -41,8 +41,9 @@ export interface Student {
   claimed_by_name?: string;
   pub_score?: number;
   pub_total_ratings?: number;
+  pub_total_points?: number;
   profile_posts?: number;
-  score_display_mode?: 'profile' | 'combined';
+  score_display_mode?: 'profile' | 'combined' | 'publications';
 }
 
 export interface CreateStudentData {

@@ -1748,8 +1748,13 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               const userScoreDisplayMode = (dbUser as any)?.score_display_mode || 'profile';
               const userProfileScore = Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0);
               const userProfilePosts = Number((dbUser as any)?.profile_posts) || userProfileScore;
+              const userPubScore = Number((dbUser as any)?.pub_score) || 0;
+              const userPubTotalPoints = Number((dbUser as any)?.pub_total_points) || 0;
+
               const avatarDisplayedScore = userScoreDisplayMode === 'combined' && userProfilePosts > 0
                 ? userProfilePosts
+                : userScoreDisplayMode === 'publications' && userPubScore > 0
+                ? userPubScore
                 : userProfileScore;
 
               return (
@@ -1762,8 +1767,8 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   onClick={isSelfProfile ? () => setIsScoreModeModalOpen(true) : undefined}
                   title={
                     isSelfProfile 
-                      ? "Toca para configurar si muestras la calificación de tu perfil o perfil + publicaciones" 
-                      : `Calificación general: ${avatarDisplayedScore.toFixed(4)}`
+                      ? "Toca para configurar la calificación visible (Perfil, Solo Publicaciones o Perfil + Publicaciones)" 
+                      : `Calificación visible: ${avatarDisplayedScore.toFixed(4)}${userPubTotalPoints > 0 ? ` (${userPubTotalPoints.toLocaleString()} pts de estrellas acumuladas)` : ''}`
                   }
                 >
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
@@ -1772,6 +1777,11 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     className="text-xs sm:text-sm font-mono font-black tracking-tight"
                     subClassName="text-[0.82em] font-bold opacity-85 ml-0.5 tracking-normal text-amber-300"
                   />
+                  {userScoreDisplayMode === 'publications' && (
+                    <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30 ml-0.5">
+                      PUB
+                    </span>
+                  )}
                 </div>
               );
             })()}
@@ -3779,7 +3789,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         </div>
       )}
 
-      {/* Modal para configurar el modo de calificación visible (Perfil vs Perfil + Publicaciones) */}
+      {/* Modal para configurar el modo de calificación visible (Perfil vs Perfil + Publicaciones vs Solo Publicaciones) */}
       {user && isScoreModeModalOpen && (
         <ScoreDisplayModeModal
           isOpen={isScoreModeModalOpen}
@@ -3789,6 +3799,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           profileScore={Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0)}
           profilePostsScore={Number((dbUser as any)?.profile_posts) || Number(claimedStudent?.score ?? (dbUser as any)?.score ?? 5.0)}
           pubScore={Number((dbUser as any)?.pub_score) || 0}
+          pubTotalPoints={Number((dbUser as any)?.pub_total_points) || 0}
           onModeSaved={(newMode) => {
             setDbUser((prev: any) => prev ? { ...prev, score_display_mode: newMode } : prev);
             setSuccessMsg('¡Modo de calificación actualizado con éxito!');
