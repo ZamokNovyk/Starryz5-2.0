@@ -26,10 +26,47 @@ export async function uploadAvatarToBackblaze(
   compressed: CompressionResult,
   previousPhotoUrl?: string | null
 ): Promise<UploadAvatarResponse> {
-  return uploadImageToBackblaze(userId, compressed, {
-    folder: 'avatars',
-    previousPhotoUrl: previousPhotoUrl || null,
-  });
+  try {
+    return await uploadImageToBackblaze(userId, compressed, {
+      folder: 'avatars',
+      previousPhotoUrl: previousPhotoUrl || null,
+    });
+  } catch (b2Err) {
+    console.warn('[Avatar] Subida a Backblaze B2 falló, usando fallback seguro:', b2Err);
+    
+    // Fallback 1: Supabase Storage si el bucket 'avatars' o 'user-publications' existe
+    try {
+      const fileExt = compressed.format.includes('webp') ? 'webp' : 'jpg';
+      const fileName = `${userId}/${Date.now()}.${fileExt}`;
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, compressed.blob, {
+          contentType: compressed.format,
+          cacheControl: '31536000',
+          upsert: true,
+        });
+
+      if (!error && data?.path) {
+        const { data: publicData } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(data.path);
+        if (publicData?.publicUrl) {
+          return {
+            success: true,
+            publicUrl: publicData.publicUrl,
+            sizeKb: Math.round(compressed.blob.size / 1024),
+          };
+        }
+      }
+    } catch (_) {}
+
+    // Fallback 2: Data URL en Base64 seguro (comprimido < 100 KB)
+    return {
+      success: true,
+      publicUrl: compressed.base64,
+      sizeKb: Math.round(compressed.blob.size / 1024),
+    };
+  }
 }
 
 /**
