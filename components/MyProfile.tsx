@@ -1683,6 +1683,16 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         {/* Glow dorado ambiental superior */}
         <div className="absolute top-0 left-0 right-0 h-28 bg-gradient-to-b from-amber-500/10 via-transparent to-transparent pointer-events-none" />
 
+        {/* Botón Compartir Perfil en la esquina superior derecha (solo ícono) */}
+        <button
+          type="button"
+          onClick={handleShareProfile}
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/60 hover:border-sky-400 text-zinc-300 hover:text-white transition-all flex items-center justify-center cursor-pointer active:scale-90 shadow-md hover:shadow-[0_0_15px_rgba(56,189,248,0.25)] z-20 group"
+          title={t('action.share', 'Compartir perfil')}
+        >
+          <Share2 className="w-4 h-4 text-sky-400 group-hover:scale-110 transition-transform" />
+        </button>
+
         {/* Lado izquierdo: Avatar + Información principal */}
         <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-7 w-full lg:w-auto text-center sm:text-left z-10">
           
@@ -1826,17 +1836,6 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                   <span>{t('action.change_photo', 'Cambiar Foto')}</span>
                 </button>
               )}
-
-              {/* Botón Compartir Perfil */}
-              <button
-                type="button"
-                onClick={handleShareProfile}
-                className="px-2.5 py-0.5 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 hover:border-sky-400 text-[10px] font-bold text-zinc-400 hover:text-white transition-all flex items-center gap-1 cursor-pointer active:scale-95"
-                title="Compartir perfil"
-              >
-                <Share2 className="w-3 h-3 text-sky-400" />
-                <span>{t('action.share', 'Compartir')}</span>
-              </button>
             </div>
 
             {/* Descripción / Bio editable */}
@@ -1925,25 +1924,47 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               const pubPts = Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0);
               const totalPts = Number((dbUser as any)?.total_points ?? (profilePts + pubPts));
 
+              if (isOwnProfile) {
+                return (
+                  <div className="flex items-center justify-center sm:justify-start">
+                    <button
+                      type="button"
+                      onClick={() => setIsPointsModalOpen(true)}
+                      className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 via-yellow-500/15 to-amber-500/10 border border-amber-400/40 hover:border-amber-400 text-amber-400 hover:text-amber-300 text-xs font-bold transition-all shadow-sm hover:shadow-[0_0_15px_rgba(234,179,8,0.25)] active:scale-95 cursor-pointer group"
+                      title="Toca para ver el desglose detallado de tus puntos por perfil y publicaciones"
+                    >
+                      <div className="w-4 h-4 rounded-full bg-amber-400/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Sparkles className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                      </div>
+                      <span className="tracking-wide text-zinc-300 group-hover:text-white transition-colors">
+                        <strong className="text-white font-extrabold text-sm mr-1">
+                          {totalPts.toLocaleString()}
+                        </strong>
+                        {totalPts === 1 ? 'Punto ganado' : 'Puntos ganados'}
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-amber-400/70 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                  </div>
+                );
+              }
+
+              // En perfiles de otros usuarios: Solo visualización estática (no clickeable)
               return (
                 <div className="flex items-center justify-center sm:justify-start">
-                  <button
-                    type="button"
-                    onClick={() => setIsPointsModalOpen(true)}
-                    className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 via-yellow-500/15 to-amber-500/10 border border-amber-400/40 hover:border-amber-400 text-amber-400 hover:text-amber-300 text-xs font-bold transition-all shadow-sm hover:shadow-[0_0_15px_rgba(234,179,8,0.25)] active:scale-95 cursor-pointer group"
-                    title="Toca para ver el desglose de puntos acumulados por perfil y publicaciones"
+                  <div
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs font-semibold select-none shadow-xs"
+                    title="Puntos acumulados del usuario"
                   >
-                    <div className="w-4 h-4 rounded-full bg-amber-400/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Sparkles className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                    <div className="w-4 h-4 rounded-full bg-amber-400/10 flex items-center justify-center">
+                      <Sparkles className="w-2.5 h-2.5 text-amber-400/70" />
                     </div>
-                    <span className="tracking-wide text-zinc-300 group-hover:text-white transition-colors">
-                      <strong className="text-white font-extrabold text-sm mr-1">
+                    <span className="tracking-wide">
+                      <strong className="text-zinc-200 font-bold text-xs mr-1">
                         {totalPts.toLocaleString()}
                       </strong>
-                      {totalPts === 1 ? 'Punto ganado' : 'Puntos ganados'}
+                      {totalPts === 1 ? 'Punto' : 'Puntos'}
                     </span>
-                    <ChevronRight className="w-3.5 h-3.5 text-amber-400/70 group-hover:translate-x-0.5 transition-transform" />
-                  </button>
+                  </div>
                 </div>
               );
             })()}
@@ -3841,16 +3862,18 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
         />
       )}
 
-      {/* Modal de Desglose de Puntos Ganados (Perfil vs Publicaciones) */}
-      <UserPointsModal
-        isOpen={isPointsModalOpen}
-        onClose={() => setIsPointsModalOpen(false)}
-        displayName={dbUser?.display_name || user?.displayName || 'Usuario'}
-        totalPoints={Number((dbUser as any)?.total_points ?? (Number((dbUser as any)?.profile_points ?? 0) + Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0)))}
-        profilePoints={Number((dbUser as any)?.profile_points ?? 0)}
-        pubPoints={Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0)}
-        isOwnProfile={isOwnProfile}
-      />
+      {/* Modal de Desglose de Puntos Ganados (Perfil vs Publicaciones) - Solo accesible para el propio usuario */}
+      {isOwnProfile && (
+        <UserPointsModal
+          isOpen={isPointsModalOpen}
+          onClose={() => setIsPointsModalOpen(false)}
+          displayName={dbUser?.display_name || user?.displayName || 'Usuario'}
+          totalPoints={Number((dbUser as any)?.total_points ?? (Number((dbUser as any)?.profile_points ?? 0) + Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0)))}
+          profilePoints={Number((dbUser as any)?.profile_points ?? 0)}
+          pubPoints={Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0)}
+          isOwnProfile={isOwnProfile}
+        />
+      )}
 
     </div>
   );
