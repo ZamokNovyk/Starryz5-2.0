@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { NosediveScore } from './NosediveScore';
 import ScoreDisplayModeModal from '@/components/Modals/ScoreDisplayModeModal';
+import UserPointsModal from '@/components/Modals/UserPointsModal';
 import { 
   getUserProfessorSubscriptions, 
   removeProfessorNotificationSubscription, 
@@ -182,6 +183,7 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isViewPhotoModalOpen, setIsViewPhotoModalOpen] = useState(false);
   const [isScoreModeModalOpen, setIsScoreModeModalOpen] = useState(false);
+  const [isPointsModalOpen, setIsPointsModalOpen] = useState(false);
 
   // Estados para edición de descripción
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -1917,17 +1919,34 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
               )}
             </div>
 
-            {/* Miembro desde */}
-            <div className="flex items-center justify-center sm:justify-start gap-1.5 text-zinc-500 text-xs font-medium">
-              <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-              <span>{t('profile.member_since', 'Miembro desde')} {(() => {
-                try {
-                  const dateStr = dbUser?.created_at || (dbUser as any)?.registered_at;
-                  if (dateStr) return new Date(dateStr).getFullYear();
-                } catch (e) {}
-                return '2024';
-              })()}</span>
-            </div>
+            {/* Puntos Ganados Totales (Abre ventana modal con desglose de puntos por perfil y publicaciones) */}
+            {(() => {
+              const profilePts = Number((dbUser as any)?.profile_points ?? 0);
+              const pubPts = Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0);
+              const totalPts = Number((dbUser as any)?.total_points ?? (profilePts + pubPts));
+
+              return (
+                <div className="flex items-center justify-center sm:justify-start">
+                  <button
+                    type="button"
+                    onClick={() => setIsPointsModalOpen(true)}
+                    className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 via-yellow-500/15 to-amber-500/10 border border-amber-400/40 hover:border-amber-400 text-amber-400 hover:text-amber-300 text-xs font-bold transition-all shadow-sm hover:shadow-[0_0_15px_rgba(234,179,8,0.25)] active:scale-95 cursor-pointer group"
+                    title="Toca para ver el desglose de puntos acumulados por perfil y publicaciones"
+                  >
+                    <div className="w-4 h-4 rounded-full bg-amber-400/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Sparkles className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                    </div>
+                    <span className="tracking-wide text-zinc-300 group-hover:text-white transition-colors">
+                      <strong className="text-white font-extrabold text-sm mr-1">
+                        {totalPts.toLocaleString()}
+                      </strong>
+                      {totalPts === 1 ? 'Punto ganado' : 'Puntos ganados'}
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-amber-400/70 group-hover:translate-x-0.5 transition-transform" />
+                  </button>
+                </div>
+              );
+            })()}
           </div>
 
         </div>
@@ -2694,6 +2713,21 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
                     <User className="w-5 h-5 text-[#eab308]" /> 
                     {isOwnProfile ? t('form.personal_data', 'Mis Datos Personales') : t('form.personal_info', 'Información Personal')}
                   </h3>
+
+                  {/* Fecha de Registro / Miembro desde (Trasladado a Información) */}
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs font-medium">
+                    <Calendar className="w-3.5 h-3.5 text-[#eab308]" />
+                    <span>{t('profile.member_since', 'Miembro desde')} {(() => {
+                      try {
+                        const dateStr = dbUser?.created_at || (dbUser as any)?.registered_at;
+                        if (dateStr) {
+                          const dateObj = new Date(dateStr);
+                          return dateObj.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) || String(dateObj.getFullYear());
+                        }
+                      } catch (e) {}
+                      return '2026';
+                    })()}</span>
+                  </div>
                 </div>
               </div>
 
@@ -3806,6 +3840,17 @@ export default function MyProfile({ uid, onBackToHome, onNavigate }: MyProfilePr
           }}
         />
       )}
+
+      {/* Modal de Desglose de Puntos Ganados (Perfil vs Publicaciones) */}
+      <UserPointsModal
+        isOpen={isPointsModalOpen}
+        onClose={() => setIsPointsModalOpen(false)}
+        displayName={dbUser?.display_name || user?.displayName || 'Usuario'}
+        totalPoints={Number((dbUser as any)?.total_points ?? (Number((dbUser as any)?.profile_points ?? 0) + Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0)))}
+        profilePoints={Number((dbUser as any)?.profile_points ?? 0)}
+        pubPoints={Number((dbUser as any)?.pub_points ?? (dbUser as any)?.pub_total_points ?? 0)}
+        isOwnProfile={isOwnProfile}
+      />
 
     </div>
   );
